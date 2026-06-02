@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>斬 — Targeting Pattern Editor</title>
+<meta name="description" content="Design and export 3D targeting / stance patterns for the 斬 card system. Installable, works offline." />
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#08100e" />
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
+<!-- iOS -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="斬 Targeting" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#08100e;
+    --panel:#0c1715;
+    --steel:#1a2724;
+    --steel-2:#243531;
+    --line:#2c4842;
+    --teal:#3fd6b0;
+    --teal-dim:#1c5f52;
+    --teal-deep:#0d2e29;
+    --red:#e8472e;
+    --red-dim:#7a2418;
+    --amber:#e0a64a;
+    --cream:#e9e3d2;
+    --muted:#7f988f;
+    --hazard:#c9a227;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Chakra Petch",system-ui,sans-serif;
+    background:
+      radial-gradient(900px 700px at 78% -10%, #0f2420 0%, transparent 60%),
+      radial-gradient(700px 600px at 10% 110%, #12100a 0%, transparent 55%),
+      var(--bg);
+    color:var(--cream);
+    min-height:100vh;
+    letter-spacing:.01em;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:999;
+    background-image:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay;opacity:.35;
+  }
+  .wrap{max-width:1320px;margin:0 auto;padding:26px 22px 60px}
+  header.topbar{
+    display:flex;align-items:center;gap:18px;
+    border:1px solid var(--line);
+    background:linear-gradient(180deg,#16221f,#0b1412);
+    border-radius:10px;padding:14px 18px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 14px 40px rgba(0,0,0,.5);
+    position:relative;overflow:hidden;
+  }
+  header.topbar::after{
+    content:"AX-9817-GB";position:absolute;right:140px;top:50%;transform:translateY(-50%);
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.3em;color:var(--muted);opacity:.5
+  }
+  .glyph{
+    width:54px;height:54px;display:grid;place-items:center;flex:0 0 auto;
+    border:2px solid var(--red-dim);border-radius:8px;
+    color:var(--red);font-family:"Noto Sans JP";font-size:30px;font-weight:700;
+    text-shadow:0 0 14px rgba(232,71,46,.7);
+    background:radial-gradient(circle at 50% 40%, rgba(232,71,46,.12), transparent 70%);
+  }
+  .titles h1{font-size:20px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+  .titles p{font-size:12px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-top:3px}
+  .spacer{flex:1}
+  .modeswitch{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .modeswitch button{
+    background:transparent;border:0;color:var(--muted);cursor:pointer;
+    font-family:inherit;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    padding:10px 16px;transition:.18s;
+  }
+  .modeswitch button.active{background:var(--teal-deep);color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal-dim), inset 0 0 16px rgba(63,214,176,.18)}
+  .modeswitch button:hover:not(.active){color:var(--cream)}
+
+  .grid-layout{display:grid;grid-template-columns:1fr 360px;gap:22px;margin-top:22px}
+  @media(max-width:1040px){.grid-layout{grid-template-columns:1fr}}
+
+  .stagewrap{
+    border:1px solid var(--line);border-radius:12px;
+    background:transparent;                 /* clean: no bg color / texture behind the grid */
+    padding:10px 10px 4px;position:relative;overflow:hidden;min-height:520px;
+  }
+  .stagebtn{
+    position:absolute;top:10px;right:12px;z-index:6;
+    background:rgba(8,16,14,.55);border:1px solid var(--line);color:var(--teal);
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+    padding:6px 10px;border-radius:6px;cursor:pointer;transition:.16s;backdrop-filter:blur(4px);
+    display:flex;align-items:center;gap:6px;
+  }
+  .stagebtn:hover{border-color:var(--teal-dim);background:rgba(13,46,41,.7);box-shadow:0 0 12px rgba(63,214,176,.25)}
+  .stagebtn:active{transform:translateY(1px)}
+  .stage-meta{
+    position:absolute;top:12px;left:14px;font-family:"JetBrains Mono",monospace;
+    font-size:10px;letter-spacing:.22em;color:var(--muted);z-index:5;
+  }
+  .stage-meta b{color:var(--teal)}
+  .stage{
+    perspective:1100px;perspective-origin:50% 38%;
+    height:520px;display:grid;place-items:center;
+  }
+  .board{
+    transform-style:preserve-3d;
+    transform:rotateX(58deg) rotateZ(0deg) translateZ(0);
+    display:flex;flex-direction:column;align-items:center;gap:0;
+    position:relative;
+  }
+  .axis-label{
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.28em;
+    color:var(--muted);text-transform:uppercase;
+    transform:rotateX(-58deg);transform-origin:center;
+  }
+  .grid3{
+    display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,64px);
+    gap:5px;transform-style:preserve-3d;position:relative;padding:10px;
+  }
+  .grid3.far{margin-bottom:6px}
+  .grid3.near{margin-top:6px}
+  .grid-frame{
+    position:absolute;inset:-2px;border:1px dotted rgba(63,214,176,.16);border-radius:6px;
+    background:none;                         /* texture removed */
+  }
+  .grid3.far .grid-frame{border-color:rgba(232,110,70,.14);background:none}
+  .tag{
+    position:absolute;top:-22px;left:0;font-family:"JetBrains Mono",monospace;font-size:9.5px;
+    letter-spacing:.24em;color:var(--muted);text-transform:uppercase;
+    transform:rotateX(-58deg);transform-origin:left top;white-space:nowrap;
+  }
+  .tag.far{color:#c97a6a}.tag.near{color:var(--teal)}
+  .cell{
+    position:relative;transform-style:preserve-3d;
+  }
+  .tile{
+    position:absolute;inset:0;border-radius:3px;
+    border:1px dotted rgba(120,200,180,.30);
+    background:transparent;transition:.16s;pointer-events:none;
+  }
+  .grid3.far .tile{border-color:rgba(232,140,100,.28)}
+  .stack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
+  .layer{position:absolute;inset:0;border-radius:4px}
+  /* hit target lives on the TOP face of the cube (raised + tilted with the board),
+     so clicks land on the visible upper layer rather than the flat base footprint */
+  .hitpad{
+    position:absolute;inset:0;border-radius:4px;cursor:pointer;pointer-events:auto;
+    transition:box-shadow .16s;
+  }
+  .hitpad:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.55), 0 0 14px rgba(255,255,255,.14)}
+  /* shooter stance marker — small orb (~half the cell) with hot core + halo */
+  .orb{
+    position:absolute;left:50%;top:50%;width:50%;height:50%;border-radius:50%;
+    background:radial-gradient(circle at 50% 50%,
+      #ffffff 0%, #b8ffec 16%, #3fd6b0 46%, rgba(63,214,176,.45) 66%, rgba(63,214,176,0) 80%);
+    box-shadow:0 0 14px 2px rgba(63,214,176,.65), 0 0 32px 8px rgba(63,214,176,.32);
+  }
+  /* output panel */
+  .panel{
+    border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,#0d1816,#091210);
+    padding:18px;display:flex;flex-direction:column;gap:18px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .panel h2{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .panel h2::before{content:"";width:14px;height:2px;background:var(--teal);box-shadow:0 0 8px var(--teal)}
+  .field input[type=text]{
+    width:100%;background:#06100e;border:1px solid var(--line);border-radius:6px;
+    color:var(--cream);font-family:inherit;font-size:14px;padding:9px 11px;letter-spacing:.04em;
+  }
+  .field input:focus{outline:none;border-color:var(--teal-dim);box-shadow:0 0 0 1px var(--teal-dim)}
+  .dmgrow{display:flex;gap:10px;margin-top:10px}
+  .dmgrow .field{flex:1}
+  .field label{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+
+  .moves{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .mvbtn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    background:#0a1513;border:1px solid var(--line);border-radius:7px;color:var(--muted);
+    font-family:inherit;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    padding:11px;cursor:pointer;transition:.16s;
+  }
+  .mvbtn .ar{font-size:18px;line-height:1}
+  .mvbtn.on{color:var(--amber);border-color:var(--amber);background:rgba(224,166,74,.08);box-shadow:inset 0 0 14px rgba(224,166,74,.12)}
+  .mvbtn:disabled{opacity:.32;cursor:not-allowed}
+  .mvbtn:not(.on):not(:disabled):hover{color:var(--cream);border-color:#3a5a52}
+
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px}
+  .btn{
+    flex:1;min-width:fit-content;background:#0a1513;border:1px solid var(--line);border-radius:7px;
+    color:var(--cream);font-family:inherit;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    padding:10px 12px;cursor:pointer;transition:.16s;white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--teal-dim);color:var(--teal)}
+  .btn.warn:hover{border-color:var(--red-dim);color:var(--red)}
+  .btn.go{border-color:var(--teal-dim);color:var(--teal);background:var(--teal-deep)}
+  .btn.go.playing{border-color:var(--amber);color:var(--amber);background:rgba(224,166,74,.1)}
+
+  .legend{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--muted)}
+  .legend .row{display:flex;align-items:center;gap:10px}
+  .swatch{width:16px;height:16px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.1)}
+  .sw-hit{background:radial-gradient(circle at 50% 30%,#ff8a5a,#e8472e 60%,#7a2418);box-shadow:0 0 10px rgba(232,71,46,.6)}
+  .sw-stance{background:radial-gradient(circle at 50% 30%,#8effdf,#3fd6b0 60%,#1c5f52);box-shadow:0 0 10px rgba(63,214,176,.5);border-radius:50%}
+  .sw-empty{background:linear-gradient(180deg,#13201d,#0a1411)}
+  .legend b{color:var(--cream)}
+
+  pre{
+    font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.5;
+    background:#06100e;border:1px solid var(--line);border-radius:7px;padding:12px 13px;
+    color:var(--teal);overflow:auto;white-space:pre;max-height:240px;
+  }
+  pre.json{color:var(--cream);font-size:11px;max-height:200px}
+  .outhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .copy{background:transparent;border:1px solid var(--line);color:var(--muted);font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.12em;padding:5px 9px;border-radius:5px;cursor:pointer;transition:.16s}
+  .copy:hover{color:var(--teal);border-color:var(--teal-dim)}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.6}
+  .hint b{color:var(--amber)}
+
+  /* card preview */
+  .cardprev{margin-top:22px;display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
+  @media(max-width:680px){.cardprev{grid-template-columns:1fr}}
+  .card{
+    width:300px;aspect-ratio:3/4;border-radius:14px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#1c2622,#0c1310);
+    border:6px solid #1a221f;
+    box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.5);
+  }
+  .card .frame{position:absolute;inset:8px;border:1px solid var(--teal-dim);border-radius:8px;box-shadow:inset 0 0 30px rgba(0,0,0,.6)}
+  .card .num{position:absolute;top:10px;left:14px;font-size:42px;font-weight:700;color:#9fb4ac;line-height:.8;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+  .card .badge{position:absolute;top:12px;right:14px;width:42px;height:42px;border-radius:50%;border:2px solid var(--red-dim);display:grid;place-items:center;color:var(--red);font-family:"Noto Sans JP";font-size:22px;text-shadow:0 0 10px rgba(232,71,46,.7);background:rgba(232,71,46,.06)}
+  .card .dmg{position:absolute;top:58px;right:18px;width:34px;height:34px;border-radius:50%;border:1px solid var(--teal-dim);display:grid;place-items:center;color:var(--teal);font-size:16px;font-weight:700}
+  .card .txt{position:absolute;left:16px;bottom:16px;width:150px;font-family:"Noto Sans JP";font-size:11px;line-height:1.55;color:var(--teal);text-shadow:0 0 8px rgba(63,214,176,.3)}
+  .card .minigrids{position:absolute;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px}
+  .mini{display:grid;grid-template-columns:repeat(3,20px);grid-template-rows:repeat(3,20px);gap:2px}
+  .mini i{border-radius:3px;background:#0c1714;border:1px solid rgba(255,255,255,.06)}
+  .mini.far i.on{background:radial-gradient(circle at 50% 30%,#ff8a5a,#e8472e 70%);box-shadow:0 0 6px rgba(232,71,46,.6)}
+  .mini.near i{border-radius:50%}
+  .mini.near i.on{background:radial-gradient(circle at 50% 30%,#8effdf,#3fd6b0 70%);box-shadow:0 0 6px rgba(63,214,176,.6)}
+  .prevnote{color:var(--muted);font-size:12px;line-height:1.7}
+  .prevnote h2{margin-bottom:10px}
+  .kbd{font-family:"JetBrains Mono",monospace;background:#06100e;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--cream);font-size:11px}
+
+  /* PWA chrome — install affordance + update / iOS toasts */
+  #installBtn{right:86px;color:var(--amber)}
+  #installBtn:hover{border-color:var(--amber);box-shadow:0 0 12px rgba(224,166,74,.3)}
+  .pwa-toast{
+    position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(140px);
+    z-index:1000;display:flex;align-items:center;gap:12px;
+    background:linear-gradient(180deg,#16221f,#0b1412);border:1px solid var(--teal-dim);
+    border-radius:10px;padding:12px 16px;color:var(--cream);font-size:13px;
+    box-shadow:0 14px 40px rgba(0,0,0,.6), inset 0 0 16px rgba(63,214,176,.1);
+    opacity:0;transition:transform .3s, opacity .3s;max-width:92vw;
+  }
+  .pwa-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+  .pwa-toast b{color:var(--amber)}
+  .pwa-toast button{
+    background:var(--teal-deep);border:1px solid var(--teal-dim);color:var(--teal);
+    font-family:inherit;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    padding:7px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  }
+  .pwa-toast button.ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+  .pwa-toast button:hover{box-shadow:0 0 12px rgba(63,214,176,.3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="glyph">斬</div>
+    <div class="titles">
+      <h1>Targeting Pattern Editor</h1>
+      <p>Near grid → far grid &nbsp;·&nbsp; stance maps to footprint</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="modeswitch" id="modeswitch">
+      <button data-mode="fixed" class="active">Fixed</button>
+      <button data-mode="linked">Stance-linked</button>
+    </div>
+  </header>
+
+  <div class="grid-layout">
+
+    <!-- 3D STAGE -->
+    <div class="stagewrap">
+      <button class="stagebtn" id="installBtn" title="Install this app" hidden>⊕ Install</button>
+      <button class="stagebtn" id="dlPng" title="Download transparent PNG of the 3D grid">⬇ PNG</button>
+      <div class="stage">
+        <div class="board" id="board">
+          <div class="grid3 far" id="gridFar">
+            <div class="grid-frame"></div>
+          </div>
+          <div class="axis-label" id="vArrows">&nbsp;</div>
+          <div class="grid3 near" id="gridNear">
+            <div class="grid-frame"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTROL PANEL -->
+    <aside class="panel">
+      <div>
+        <h2>Pattern</h2>
+        <div class="field">
+          <label>Name</label>
+          <input type="text" id="pname" value="T-Cleave" />
+        </div>
+        <div class="dmgrow">
+          <div class="field"><label>Base DMG</label><input type="text" id="pdmg" value="4" /></div>
+          <div class="field"><label>Per Attach (X)</label><input type="text" id="pattach" value="1" /></div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Movement</h2>
+        <div class="moves" id="moves">
+          <button class="mvbtn" data-dir="fwd"><span class="ar">↑</span> Forward</button>
+          <button class="mvbtn" data-dir="back"><span class="ar">↓</span> Back</button>
+          <button class="mvbtn" data-dir="left"><span class="ar">←</span> Left</button>
+          <button class="mvbtn" data-dir="right"><span class="ar">→</span> Right</button>
+        </div>
+        <p class="hint" style="margin-top:10px" id="movehint"><b>Fixed mode:</b> footprint is absolute — playable from anywhere. Switch to <b>Stance-linked</b> to enable translation.</p>
+      </div>
+
+      <div>
+        <h2>Actions</h2>
+        <div class="btnrow">
+          <button class="btn go" id="playBtn">▶ Preview</button>
+          <button class="btn" id="clearFar">Clear hits</button>
+          <button class="btn" id="clearNear">Clear stance</button>
+          <button class="btn warn" id="clearAll">Reset</button>
+        </div>
+      </div>
+
+      <div>
+        <h2>Legend</h2>
+        <div class="legend">
+          <div class="row"><span class="swatch sw-hit"></span><span><b>square</b> — target must be there to be hit</span></div>
+          <div class="row"><span class="swatch sw-stance"></span><span><b>round</b> — P1 must be here to shoot</span></div>
+          <div class="row"><span class="swatch sw-empty"></span><span>empty</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- OUTPUTS -->
+  <div class="cardprev">
+    <div>
+      <h2 style="font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal);margin-bottom:12px;">Card Preview</h2>
+      <div class="card">
+        <div class="frame"></div>
+        <div class="num" id="cnum">8</div>
+        <div class="badge">斬</div>
+        <div class="dmg" id="cdmg">4</div>
+        <div class="txt" id="ctxt"></div>
+        <div class="minigrids">
+          <div class="mini far" id="miniFar"></div>
+          <div class="mini near" id="miniNear"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div>
+        <div class="outhead"><h2 style="margin:0;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal)">Notation</h2><button class="copy" id="copyAscii">COPY</button></div>
+        <pre id="ascii"></pre>
+      </div>
+      <div>
+        <div class="outhead"><h2 style="margin:0;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal)">Export</h2><button class="copy" id="copyJson">COPY JSON</button></div>
+        <pre class="json" id="json"></pre>
+      </div>
+      <p class="prevnote"><b>Click</b> far cells to set hits, near cells to set stance. In <span class="kbd">Stance-linked</span> mode only one stance anchor is allowed; <span class="kbd">Preview</span> slides the pattern along enabled axes to show how movement re-aims it.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const idx = (r,c) => r*3+c;
+
+const state = {
+  name:"T-Cleave", dmg:"4", attach:"1",
+  mode:"fixed",                 // 'fixed' | 'linked'
+  far:new Set([1,3,4,5,7]),     // hit cells (base layout)
+  near:new Set([7]),            // stance cells (fixed: playable-from; linked: single anchor)
+  move:{fwd:false,back:false,left:false,right:false}
+};
+
+/* ---------- cell construction ---------- */
+const LAYERS = 10, STEP = 3.0;
+function buildGrid(el, grid){
+  // remove old cells (keep frame)
+  [...el.querySelectorAll('.cell')].forEach(n=>n.remove());
+  for(let i=0;i<9;i++){
+    const cell=document.createElement('div');
+    cell.className='cell'; cell.dataset.i=i; cell.dataset.grid=grid;
+    const tile=document.createElement('div'); tile.className='tile';
+    cell.appendChild(tile);
+    // hit pad sits at the top of the cube stack so the click target tracks
+    // the visible upper face (post-tilt), not the flat base footprint
+    const hit=document.createElement('div'); hit.className='hitpad';
+    hit.style.transform=`translateZ(${(LAYERS-1)*STEP}px)`;
+    hit.addEventListener('click',()=>onCellClick(grid,i));
+    cell.appendChild(hit);
+    el.appendChild(cell);
+  }
+}
+// every cell is a glass cube; active = lit top face (orange square / teal round)
+function renderCube(cell, grid, active){
+  const old=cell.querySelector('.stack'); if(old) old.remove();
+  const stack=document.createElement('div'); stack.className='stack';
+  const isFar = grid==='far';
+
+  // SHOOTER stance → compact glowing orb (~half cell), hot core + halo
+  if(active && !isFar){
+    const orb=document.createElement('div'); orb.className='orb';
+    orb.style.transform=`translate(-50%,-50%) translateZ(${(LAYERS-1)*STEP*0.55}px)`;
+    stack.appendChild(orb);
+    cell.appendChild(stack);
+    return;
+  }
+
+  for(let l=0;l<LAYERS;l++){
+    const t=l/(LAYERS-1);
+    const top=(l===LAYERS-1), base=(l===0);
+    const layer=document.createElement('div'); layer.className='layer';
+    layer.style.transform=`translateZ(${l*STEP}px)`;
+    let bg='', bd='', sh='';
+    if(!active){
+      // dark glassy cube with faint green tint, glowing top rim + base bleed
+      const a=0.14+0.16*t;
+      bg=`rgba(${(10+10*t)|0},${(28+16*t)|0},${(24+14*t)|0},${a})`;
+      if(top){ bd='1px solid rgba(140,210,190,.30)'; sh='inset 0 0 9px rgba(63,214,176,.12)'; }
+      if(base){ sh='0 0 12px rgba(63,214,176,.16)'; }
+    } else if(isFar){
+      // TARGET — orange/red, fully lit square
+      const lo=[90,26,12], hi=[255,128,66];
+      const r=lo[0]+(hi[0]-lo[0])*t, g=lo[1]+(hi[1]-lo[1])*t, b=lo[2]+(hi[2]-lo[2])*t;
+      bg=`rgba(${r|0},${g|0},${b|0},${0.5+0.4*t})`;
+      if(top){ bg='rgb(255,132,70)'; bd='1px solid rgba(255,190,140,.95)'; sh='0 0 20px rgba(232,84,40,.85)'; }
+      if(base){ sh='0 0 16px rgba(232,84,40,.5)'; }
+    } else {
+      // SHOOTER — teal cube with roundish light on top
+      const lo=[12,48,42], hi=[46,128,112];
+      const r=lo[0]+(hi[0]-lo[0])*t, g=lo[1]+(hi[1]-lo[1])*t, b=lo[2]+(hi[2]-lo[2])*t;
+      bg=`rgba(${r|0},${g|0},${b|0},${0.42+0.34*t})`;
+      if(top){
+        bg='radial-gradient(circle at 50% 50%, #b8ffec 0%, #3fd6b0 36%, rgba(63,214,176,.18) 68%, transparent 76%)';
+        sh='0 0 22px rgba(63,214,176,.7)';
+      }
+      if(base){ sh='0 0 16px rgba(63,214,176,.45)'; }
+    }
+    layer.style.background=bg;
+    if(bd) layer.style.border=bd;
+    if(sh) layer.style.boxShadow=sh;
+    stack.appendChild(layer);
+  }
+  cell.appendChild(stack);
+}
+
+/* ---------- interaction ---------- */
+function onCellClick(grid,i){
+  if(grid==='far'){
+    state.far.has(i)?state.far.delete(i):state.far.add(i);
+  }else{
+    if(state.mode==='linked'){
+      // single anchor
+      if(state.near.has(i)) state.near.delete(i);
+      else { state.near.clear(); state.near.add(i); }
+    }else{
+      state.near.has(i)?state.near.delete(i):state.near.add(i);
+    }
+  }
+  render();
+}
+
+/* ---------- translation for preview ---------- */
+function shift(set, dr, dc){
+  const out=new Set();
+  for(const i of set){
+    const r=Math.floor(i/3)+dr, c=(i%3)+dc;
+    if(r>=0&&r<3&&c>=0&&c<3) out.add(idx(r,c));
+  }
+  return out;
+}
+
+/* ---------- render ---------- */
+let dispFar=null, dispNear=null; // override sets during preview
+function render(){
+  const far = dispFar||state.far, near=dispNear||state.near;
+  document.querySelectorAll('#gridFar .cell').forEach(c=>renderCube(c,'far',far.has(+c.dataset.i)));
+  document.querySelectorAll('#gridNear .cell').forEach(c=>renderCube(c,'near',near.has(+c.dataset.i)));
+  if(!dispFar){ renderArrows(); renderOutputs(); renderCard(); }
+}
+
+function renderArrows(){
+  const v=$('#vArrows');
+  let s='';
+  if(state.move.fwd) s+='↑';
+  if(state.move.back) s+='↓';
+  let h='';
+  if(state.move.left) h='←';
+  if(state.move.right) h+='→';
+  v.innerHTML = (s||'&nbsp;') ;
+  v.style.color = (state.mode==='linked' && s) ? 'var(--amber)' : 'var(--muted)';
+  v.style.fontSize='22px'; v.style.fontFamily='JetBrains Mono'; v.style.letterSpacing='.1em';
+  v.style.minHeight='26px'; v.style.textShadow=(state.mode==='linked'&&s)?'0 0 12px rgba(224,166,74,.6)':'none';
+}
+
+/* ASCII notation matching the hand-sketched format */
+function asciiBlock(set, sym){
+  let out='';
+  for(let r=0;r<3;r++){
+    let row='';
+    for(let c=0;c<3;c++) row += set.has(idx(r,c))?sym:'□';
+    out+=row+'\n';
+  }
+  return out.trimEnd();
+}
+function renderOutputs(){
+  let a='';
+  a+=asciiBlock(state.far,'●')+'\n';
+  // vertical movement marker between grids
+  if(state.mode==='linked'&&(state.move.fwd||state.move.back)){
+    let m=' ';
+    m += state.move.fwd?'↑':' ';
+    m += state.move.back?'↓':' ';
+    a+=m+'\n';
+  }
+  // near grid, with L/R markers appended to middle row
+  const nearLines = asciiBlock(state.near,'▫').split('\n');
+  if(state.mode==='linked'){
+    if(state.move.left) nearLines[1]='←'+nearLines[1];
+    if(state.move.right) nearLines[1]=nearLines[1]+'→';
+  }
+  a+=nearLines.join('\n');
+  $('#ascii').textContent=a;
+
+  const obj={
+    name:state.name, damage:Number(state.dmg)||state.dmg, perAttachment:Number(state.attach)||state.attach,
+    mode:state.mode,
+    far:[...state.far].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
+    near:[...state.near].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
+    movement:state.mode==='linked'?{...state.move}:{fwd:false,back:false,left:false,right:false}
+  };
+  $('#json').textContent=JSON.stringify(obj,null,2);
+}
+
+function renderCard(){
+  $('#cnum').textContent = state.dmg||'—';
+  $('#cdmg').textContent = state.dmg||'—';
+  $('#ctxt').innerHTML = `ダメージ${state.dmg||'?'}。<br>付属アタッチメント1枚につき<br>追加ダメージ${state.attach||'X'}`;
+  const mf=$('#miniFar'), mn=$('#miniNear');
+  mf.innerHTML=''; mn.innerHTML='';
+  for(let i=0;i<9;i++){ const a=document.createElement('i'); if(state.far.has(i))a.className='on'; mf.appendChild(a); }
+  for(let i=0;i<9;i++){ const a=document.createElement('i'); if(state.near.has(i))a.className='on'; mn.appendChild(a); }
+}
+
+/* ---------- transparent PNG export (3D perspective, drawn on canvas) ---------- */
+/* Re-projects the same tilted board the DOM shows (rotateX(58deg) + CSS perspective)
+   onto a 2D canvas, on a transparent background, so the download matches the editor. */
+function buildExportCanvas(){
+  const far = dispFar||state.far, near = dispNear||state.near;
+  const CELL=64, SP=CELL+5;                 // cell size + center spacing (matches grid3)
+  const TILT=58*Math.PI/180, cosT=Math.cos(TILT), sinT=Math.sin(TILT);
+  const D=1100;                             // perspective distance (matches .stage)
+  const CUBE_H=(LAYERS-1)*STEP;             // extruded cube height
+  const ORB_H=CUBE_H*0.55;                  // stance orb float height
+  const FAR_CY=-132, NEAR_CY=132;           // board-local depth of each grid's center
+
+  // board-local (x,y,h) -> raw projected point (matches the CSS transform pipeline)
+  function project(x,y,h){
+    const Y=y*cosT - h*sinT;                // rotateX
+    const Z=y*sinT + h*cosT;
+    const f=D/(D-Z);                        // perspective divide
+    return {x:x*f, y:Y*f, z:Z};
+  }
+  const cellCX=c=>(c-1)*SP, hw=CELL/2;
+
+  // collect draw items + bounding box ---------------------------------------
+  const items=[]; let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  const ext=p=>{ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; };
+
+  function addCube(cx,cy,kind){             // kind: 'far' (orange) | 'empty' (glass)
+    const C=[
+      project(cx-hw,cy-hw,0), project(cx+hw,cy-hw,0), project(cx+hw,cy+hw,0), project(cx-hw,cy+hw,0),
+      project(cx-hw,cy-hw,CUBE_H), project(cx+hw,cy-hw,CUBE_H), project(cx+hw,cy+hw,CUBE_H), project(cx-hw,cy+hw,CUBE_H)
+    ];
+    C.forEach(ext);
+    items.push({type:'cube',kind,C,z:C.reduce((s,p)=>s+p.z,0)/8});
+  }
+  function addOrb(cx,cy){
+    const c=project(cx,cy,ORB_H), e=project(cx+CELL*0.25,cy,ORB_H);
+    const r=Math.hypot(e.x-c.x,e.y-c.y);
+    ext({x:c.x-r*2,y:c.y-r*2}); ext({x:c.x+r*2,y:c.y+r*2});
+    items.push({type:'orb',c,r,z:c.z});
+  }
+  for(let i=0;i<9;i++){
+    const r=(i/3|0), c=i%3;
+    far.has(i)  ? addCube(cellCX(c), FAR_CY +(r-1)*SP,'far') : addCube(cellCX(c), FAR_CY +(r-1)*SP,'empty');
+    near.has(i) ? addOrb (cellCX(c), NEAR_CY+(r-1)*SP)       : addCube(cellCX(c), NEAR_CY+(r-1)*SP,'empty');
+  }
+
+  // canvas sizing (transparent, high-res) -----------------------------------
+  const M=70, scale=1300/Math.max(1,(maxX-minX));
+  const W=Math.ceil((maxX-minX)*scale+M*2), H=Math.ceil((maxY-minY)*scale+M*2);
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d');
+  const PX=p=>({x:M+(p.x-minX)*scale, y:M+(p.y-minY)*scale});
+  const poly=(g,pts)=>{ g.beginPath(); pts.forEach((p,i)=>{const q=PX(p); i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y);}); g.closePath(); };
+
+  items.sort((a,b)=>a.z-b.z);               // painter's algorithm: back -> front
+  for(const it of items){
+    if(it.type==='cube'){
+      const C=it.C, sides=[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      const orange = it.kind==='far';
+      // vertical faces (sorted back->front within the cube)
+      sides.map(f=>({f,z:(C[f[0]].z+C[f[1]].z+C[f[2]].z+C[f[3]].z)/4}))
+           .sort((a,b)=>a.z-b.z)
+           .forEach(({f})=>{
+             poly(g,f.map(k=>C[k]));
+             g.fillStyle = orange ? 'rgba(150,46,22,.62)' : 'rgba(20,40,36,.16)';
+             g.fill();
+             g.lineWidth=1; g.strokeStyle = orange ? 'rgba(232,84,40,.35)' : 'rgba(120,200,180,.10)';
+             g.stroke();
+           });
+      // top face
+      poly(g,[4,5,6,7].map(k=>C[k]));
+      if(orange){
+        g.save(); g.shadowColor='rgba(232,84,40,.85)'; g.shadowBlur=26;
+        g.fillStyle='rgb(255,132,70)'; g.fill();
+        g.restore();
+        g.lineWidth=1.5; g.strokeStyle='rgba(255,190,140,.95)'; g.stroke();
+      }else{
+        g.fillStyle='rgba(40,70,62,.18)'; g.fill();
+        g.lineWidth=1; g.strokeStyle='rgba(140,210,190,.28)'; g.stroke();
+      }
+    } else {                                // orb: hot core + halo
+      const c=PX(it.c), R=it.r*scale;
+      g.save();
+      g.shadowColor='rgba(63,214,176,.7)'; g.shadowBlur=R*1.6;
+      const grad=g.createRadialGradient(c.x,c.y,0, c.x,c.y,R*1.5);
+      grad.addColorStop(0,'#ffffff'); grad.addColorStop(0.16,'#b8ffec');
+      grad.addColorStop(0.46,'#3fd6b0'); grad.addColorStop(0.66,'rgba(63,214,176,.45)');
+      grad.addColorStop(1,'rgba(63,214,176,0)');
+      g.fillStyle=grad;
+      g.beginPath(); g.arc(c.x,c.y,R*1.5,0,Math.PI*2); g.fill();
+      g.restore();
+    }
+  }
+
+  return cv;
+}
+function exportPNG(){
+  const cv=buildExportCanvas();
+  const name=(state.name||'pattern').trim().replace(/[^\w\-]+/g,'_')||'pattern';
+  const a=document.createElement('a'); a.download=name+'_targeting.png'; a.href=cv.toDataURL('image/png'); a.click();
+}
+
+/* ---------- preview animation ---------- */
+let timer=null, playing=false;
+function buildFrames(){
+  const dirs=[];
+  if(state.move.fwd) dirs.push([-1,0]);
+  if(state.move.back) dirs.push([1,0]);
+  if(state.move.left) dirs.push([0,-1]);
+  if(state.move.right) dirs.push([0,1]);
+  const frames=[{f:state.far,n:state.near}];
+  for(const [dr,dc] of dirs){
+    frames.push({f:shift(state.far,dr,dc), n:shift(state.near,dr,dc)});
+    frames.push({f:state.far,n:state.near});
+  }
+  return frames;
+}
+function play(){
+  if(playing){ stop(); return; }
+  if(state.mode!=='linked' || !(state.move.fwd||state.move.back||state.move.left||state.move.right)){
+    flash($('#playBtn'),'NO AXES'); return;
+  }
+  const frames=buildFrames(); let k=0; playing=true;
+  $('#playBtn').classList.add('playing'); $('#playBtn').textContent='■ Stop';
+  timer=setInterval(()=>{
+    const fr=frames[k%frames.length]; dispFar=fr.f; dispNear=fr.n; render(); k++;
+  },650);
+}
+function stop(){
+  playing=false; clearInterval(timer); timer=null; dispFar=dispNear=null;
+  $('#playBtn').classList.remove('playing'); $('#playBtn').textContent='▶ Preview'; render();
+}
+function flash(btn,msg){const o=btn.textContent;btn.textContent=msg;setTimeout(()=>btn.textContent=o,900);}
+
+/* ---------- mode ---------- */
+function setMode(m){
+  state.mode=m;
+  document.querySelectorAll('#modeswitch button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  const linked=m==='linked';
+  document.querySelectorAll('#moves .mvbtn').forEach(b=>b.disabled=!linked);
+  $('#movehint').innerHTML = linked
+    ? '<b>Stance-linked:</b> hits are anchored to the single stance cell. Enabled axes let the whole footprint translate — preview to see it re-aim.'
+    : '<b>Fixed mode:</b> footprint is absolute — playable from anywhere. Switch to <b>Stance-linked</b> to enable translation.';
+  if(linked && state.near.size>1){ const first=[...state.near][0]; state.near.clear(); state.near.add(first); }
+  if(!linked){ state.move={fwd:false,back:false,left:false,right:false}; document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on')); }
+  stop(); render();
+}
+
+/* ---------- wiring ---------- */
+buildGrid($('#gridFar'),'far');
+buildGrid($('#gridNear'),'near');
+document.querySelectorAll('#modeswitch button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+document.querySelectorAll('#moves .mvbtn').forEach(b=>b.addEventListener('click',()=>{
+  if(b.disabled) return;
+  const d=b.dataset.dir; state.move[d]=!state.move[d]; b.classList.toggle('on',state.move[d]); render();
+}));
+$('#playBtn').addEventListener('click',play);
+$('#dlPng').addEventListener('click',()=>{ exportPNG(); flash($('#dlPng'),'⬇ SAVED'); });
+$('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
+$('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
+$('#clearAll').addEventListener('click',()=>{state.far.clear();state.near.clear();state.move={fwd:false,back:false,left:false,right:false};document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));render();});
+$('#pname').addEventListener('input',e=>{state.name=e.target.value;renderOutputs();});
+$('#pdmg').addEventListener('input',e=>{state.dmg=e.target.value;renderOutputs();renderCard();});
+$('#pattach').addEventListener('input',e=>{state.attach=e.target.value;renderOutputs();renderCard();});
+$('#copyAscii').addEventListener('click',()=>{navigator.clipboard.writeText($('#ascii').textContent);flash($('#copyAscii'),'COPIED');});
+$('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#json').textContent);flash($('#copyJson'),'COPIED');});
+
+render();
+</script>
+
+<!-- PWA: update toast + iOS add-to-home-screen hint -->
+<div class="pwa-toast" id="updateToast" role="status" aria-live="polite">
+  <span>New version available.</span>
+  <button id="updateBtn">Refresh</button>
+  <button class="ghost" id="updateDismiss">Later</button>
+</div>
+<div class="pwa-toast" id="iosToast" role="status" aria-live="polite">
+  <span>Install: tap <b>Share</b> then <b>Add to Home Screen</b>.</span>
+  <button class="ghost" id="iosDismiss">Got it</button>
+</div>
+
+<script>
+"use strict";
+/* ---------- service worker registration + update UX ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: './' }).then((reg) => {
+      // A waiting worker already present (e.g. opened a second tab)
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          // installed + an existing controller => this is an update, not first install
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdate(sw);
+        });
+      });
+    }).catch((e) => console.warn('SW registration failed:', e));
+
+    // Reload once the new SW takes control
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return; reloading = true; window.location.reload();
+    });
+  });
+}
+function showUpdate(worker) {
+  const t = document.getElementById('updateToast');
+  t.classList.add('show');
+  document.getElementById('updateBtn').onclick = () => {
+    worker.postMessage({ type: 'SKIP_WAITING' });
+    t.classList.remove('show');
+  };
+  document.getElementById('updateDismiss').onclick = () => t.classList.remove('show');
+}
+
+/* ---------- install prompt (Chrome/Edge/Android) ---------- */
+let deferredPrompt = null;
+const installBtn = document.getElementById('installBtn');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === 'accepted') installBtn.hidden = true;
+  deferredPrompt = null;
+});
+window.addEventListener('appinstalled', () => { installBtn.hidden = true; deferredPrompt = null; });
+
+/* ---------- iOS manual A2HS hint (Safari has no beforeinstallprompt) ---------- */
+(function iosHint(){
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isSafari = /^((?!chrome|crios|fxios|android).)*safari/i.test(ua);
+  const standalone = window.navigator.standalone === true ||
+                     window.matchMedia('(display-mode: standalone)').matches;
+  if (isIOS && isSafari && !standalone && !localStorage.getItem('iosA2HSDismissed')) {
+    const t = document.getElementById('iosToast');
+    setTimeout(() => t.classList.add('show'), 1500);
+    document.getElementById('iosDismiss').onclick = () => {
+      t.classList.remove('show');
+      localStorage.setItem('iosA2HSDismissed', '1');
+    };
+  }
+})();
+</script>
+</body>
+</html>

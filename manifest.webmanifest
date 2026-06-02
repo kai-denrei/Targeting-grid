@@ -1,0 +1,18 @@
+{
+  "name": "斬 — Targeting Pattern Editor",
+  "short_name": "斬 Targeting",
+  "description": "Design and export 3D targeting / stance patterns for the 斬 card system. Works offline.",
+  "id": "./",
+  "start_url": "./?src=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08100e",
+  "theme_color": "#08100e",
+  "categories": ["games", "utilities", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
