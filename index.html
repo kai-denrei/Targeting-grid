@@ -655,7 +655,7 @@ function buildExportCanvas(){
       project(cx-hw,cy-hw,CUBE_H), project(cx+hw,cy-hw,CUBE_H), project(cx+hw,cy+hw,CUBE_H), project(cx-hw,cy+hw,CUBE_H)
     ];
     C.forEach(ext);
-    items.push({type:'cube',kind,C,z:C.reduce((s,p)=>s+p.z,0)/8});
+    items.push({type:'cube',kind,cx,cy,z:C.reduce((s,p)=>s+p.z,0)/8});
   }
   function addOrb(cx,cy){
     const c=project(cx,cy,ORB_H), e=project(cx+CELL*0.25,cy,ORB_H);
@@ -693,28 +693,36 @@ function buildExportCanvas(){
   items.sort((a,b)=>a.z-b.z);               // painter's algorithm: back -> front
   for(const it of items){
     if(it.type==='cube'){
-      const C=it.C, sides=[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      // Draw the SAME 10-layer translucent stack the DOM renderCube() builds —
+      // identical per-layer colours/alphas/glows — so the export matches the editor.
       const orange = it.kind==='far';
-      // vertical faces (sorted back->front within the cube)
-      sides.map(f=>({f,z:(C[f[0]].z+C[f[1]].z+C[f[2]].z+C[f[3]].z)/4}))
-           .sort((a,b)=>a.z-b.z)
-           .forEach(({f})=>{
-             poly(g,f.map(k=>C[k]));
-             g.fillStyle = orange ? 'rgba(150,46,22,.62)' : 'rgba(20,40,36,.16)';
-             g.fill();
-             g.lineWidth=1; g.strokeStyle = orange ? 'rgba(232,84,40,.35)' : 'rgba(120,200,180,.10)';
-             g.stroke();
-           });
-      // top face
-      poly(g,[4,5,6,7].map(k=>C[k]));
-      if(orange){
-        g.save(); g.shadowColor='rgba(232,84,40,.85)'; g.shadowBlur=26;
-        g.fillStyle='rgb(255,132,70)'; g.fill();
+      const GB = scale*0.6;                    // glow-blur scale factor (px-on-64-cell -> export res)
+      for(let l=0;l<LAYERS;l++){
+        const t=l/(LAYERS-1), top=(l===LAYERS-1), base=(l===0);
+        const pts=[ [it.cx-hw,it.cy-hw],[it.cx+hw,it.cy-hw],[it.cx+hw,it.cy+hw],[it.cx-hw,it.cy+hw] ]
+                  .map(([x,y])=>PX(project(x,y,l*STEP)));
+        let fill, stroke=null, blur=0, blurCol=null;
+        if(!orange){                           // empty glassy cube
+          const a=0.14+0.16*t;
+          fill=`rgba(${(10+10*t)|0},${(28+16*t)|0},${(24+14*t)|0},${a})`;
+          if(top){ stroke='rgba(140,210,190,.30)'; blur=9*GB; blurCol='rgba(63,214,176,.30)'; }
+          if(base){ blur=12*GB; blurCol='rgba(63,214,176,.16)'; }
+        } else {                               // orange target cube
+          const lo=[90,26,12], hi=[255,128,66];
+          const rr=lo[0]+(hi[0]-lo[0])*t, gg=lo[1]+(hi[1]-lo[1])*t, bb=lo[2]+(hi[2]-lo[2])*t;
+          fill=`rgba(${rr|0},${gg|0},${bb|0},${0.5+0.4*t})`;
+          if(top){ fill='rgb(255,132,70)'; stroke='rgba(255,190,140,.95)'; blur=20*GB; blurCol='rgba(232,84,40,.85)'; }
+          if(base){ blur=16*GB; blurCol='rgba(232,84,40,.5)'; }
+        }
+        g.save();
+        if(blur){ g.shadowColor=blurCol; g.shadowBlur=blur; }
+        g.beginPath(); pts.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+        g.fillStyle=fill; g.fill();
         g.restore();
-        g.lineWidth=1.5; g.strokeStyle='rgba(255,190,140,.95)'; g.stroke();
-      }else{
-        g.fillStyle='rgba(40,70,62,.18)'; g.fill();
-        g.lineWidth=1; g.strokeStyle='rgba(140,210,190,.28)'; g.stroke();
+        if(stroke){
+          g.beginPath(); pts.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+          g.lineWidth=Math.max(1, scale*0.18); g.strokeStyle=stroke; g.stroke();
+        }
       }
     } else if(it.type==='orb'){             // orb: hot core + halo
       const c=PX(it.c), R=it.r*scale;
@@ -761,13 +769,10 @@ function buildExportCanvas(){
   if(CRT_EXPORT){
     g.save();
     g.globalCompositeOperation='source-atop';
-    const period=Math.max(3, Math.round(3*scale));   // ~CSS 3px, scaled to export res
-    const lineW =Math.max(1, Math.round(period/3));   // 1px dark band per 3px
-    g.fillStyle='rgba(0,0,0,0.22)';
+    // fine + faint, like the on-screen body::before (1px dark / 3px, ~.35 overlay)
+    const period=Math.max(2, Math.round(2*scale)), lineW=Math.max(1, Math.round(period/3));
+    g.fillStyle='rgba(0,0,0,0.12)';
     for(let y=0;y<H;y+=period) g.fillRect(0,y,W,lineW);
-    // subtle bright phosphor line between scans for extra CRT bite
-    g.fillStyle='rgba(150,230,210,0.05)';
-    for(let y=lineW;y<H;y+=period) g.fillRect(0,y,W,lineW);
     g.restore();
   }
 
