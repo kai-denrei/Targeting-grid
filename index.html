@@ -151,6 +151,9 @@
   .grid3.far .tile{border-color:rgba(232,140,100,.28)}
   .stack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .layer{position:absolute;inset:0;border-radius:4px}
+  /* hovering inverted-pyramid beacon */
+  .pyrStack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
+  .pyrLayer{position:absolute;left:50%;top:50%;border-radius:2px}
   /* hit target lives on the TOP face of the cube (raised + tilted with the board),
      so clicks land on the visible upper layer rather than the flat base footprint */
   .hitpad{
@@ -204,12 +207,15 @@
   .btn.warn:hover{border-color:var(--red-dim);color:var(--red)}
   .btn.go{border-color:var(--teal-dim);color:var(--teal);background:var(--teal-deep)}
   .btn.go.playing{border-color:var(--amber);color:var(--amber);background:rgba(224,166,74,.1)}
+  .btn.pyron{border-color:#cdd6ff;color:#eef2ff;background:rgba(205,214,255,.12);box-shadow:inset 0 0 16px rgba(205,214,255,.18)}
+  .stagewrap.placing{outline:1px dashed rgba(205,214,255,.45);outline-offset:-4px}
 
   .legend{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--muted)}
   .legend .row{display:flex;align-items:center;gap:10px}
   .swatch{width:16px;height:16px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.1)}
   .sw-hit{background:radial-gradient(circle at 50% 30%,#ff8a5a,#e8472e 60%,#7a2418);box-shadow:0 0 10px rgba(232,71,46,.6)}
   .sw-stance{background:radial-gradient(circle at 50% 30%,#8effdf,#3fd6b0 60%,#1c5f52);box-shadow:0 0 10px rgba(63,214,176,.5);border-radius:50%}
+  .sw-pyr{background:radial-gradient(circle at 50% 35%,#ffffff,#dfe9ff 55%,#9fb4ff);box-shadow:0 0 10px rgba(255,255,255,.7);clip-path:polygon(50% 100%, 0 0, 100% 0)}
   .sw-empty{background:linear-gradient(180deg,#13201d,#0a1411)}
   .legend b{color:var(--cream)}
 
@@ -342,10 +348,23 @@
       </div>
 
       <div>
+        <h2>Pyramid Beacon</h2>
+        <div class="btnrow">
+          <button class="btn" id="pyrToggle">◇ Toggle Pyramid</button>
+        </div>
+        <div class="btnrow" id="pyrActions" style="margin-top:8px" hidden>
+          <button class="btn warn" id="pyrErase">Erase all</button>
+          <button class="btn go" id="pyrKeep">Keep</button>
+        </div>
+        <p class="hint" style="margin-top:10px" id="pyrHint">A hovering <b>inverted pyramid</b> — placed independently on any of the 18 cells. Toggle on, then click cells to drop beacons.</p>
+      </div>
+
+      <div>
         <h2>Legend</h2>
         <div class="legend">
           <div class="row"><span class="swatch sw-hit"></span><span><b>square</b> — target must be there to be hit</span></div>
           <div class="row"><span class="swatch sw-stance"></span><span><b>round</b> — P1 must be here to shoot</span></div>
+          <div class="row"><span class="swatch sw-pyr"></span><span><b>pyramid</b> — hovering beacon marker</span></div>
           <div class="row"><span class="swatch sw-empty"></span><span>empty</span></div>
         </div>
       </div>
@@ -394,7 +413,9 @@ const state = {
   mode:"fixed",                 // 'fixed' | 'linked'
   far:new Set([1,3,4,5,7]),     // hit cells (base layout)
   near:new Set([7]),            // stance cells (fixed: playable-from; linked: single anchor)
-  move:{fwd:false,back:false,left:false,right:false}
+  move:{fwd:false,back:false,left:false,right:false},
+  pyramidMode:false,            // when true, clicks place/remove pyramid beacons
+  pyr:new Set()                 // beacon cells, keyed 'far:i' / 'near:i' (independent layer)
 };
 
 /* ---------- cell construction ---------- */
@@ -471,6 +492,12 @@ function renderCube(cell, grid, active){
 
 /* ---------- interaction ---------- */
 function onCellClick(grid,i){
+  if(state.pyramidMode){
+    const k=grid+':'+i;
+    state.pyr.has(k)?state.pyr.delete(k):state.pyr.add(k);
+    render();
+    return;
+  }
   if(grid==='far'){
     state.far.has(i)?state.far.delete(i):state.far.add(i);
   }else{
@@ -499,9 +526,34 @@ function shift(set, dr, dc){
 let dispFar=null, dispNear=null; // override sets during preview
 function render(){
   const far = dispFar||state.far, near=dispNear||state.near;
-  document.querySelectorAll('#gridFar .cell').forEach(c=>renderCube(c,'far',far.has(+c.dataset.i)));
-  document.querySelectorAll('#gridNear .cell').forEach(c=>renderCube(c,'near',near.has(+c.dataset.i)));
+  document.querySelectorAll('#gridFar .cell').forEach(c=>renderCellFx(c,'far',far));
+  document.querySelectorAll('#gridNear .cell').forEach(c=>renderCellFx(c,'near',near));
   if(!dispFar){ renderArrows(); renderOutputs(); renderCard(); }
+}
+function renderCellFx(cell, grid, activeSet){
+  renderCube(cell, grid, activeSet.has(+cell.dataset.i));
+  const old=cell.querySelector('.pyrStack'); if(old) old.remove();
+  if(state.pyr.has(grid+':'+cell.dataset.i)) renderPyramid(cell);
+}
+// Hovering inverted pyramid (apex down) — white & glowing. Built as a shrinking
+// stack of squares to match the voxel/hologram look of the cubes; CSS perspective
+// makes farther beacons render smaller automatically.
+function renderPyramid(cell){
+  const st=document.createElement('div'); st.className='pyrStack';
+  const N=16, BASE=46, HOVER=(LAYERS-1)*STEP+16, PSTEP=3.2;
+  for(let l=0;l<N;l++){
+    const t=l/(N-1);                       // 0 = apex (bottom), 1 = base (top)
+    const size=Math.max(3, BASE*t);
+    const glow=1-t;                         // brighter/glowier toward the apex point
+    const lay=document.createElement('div'); lay.className='pyrLayer';
+    lay.style.width=size+'px'; lay.style.height=size+'px';
+    lay.style.transform=`translate(-50%,-50%) translateZ(${HOVER + l*PSTEP}px)`;
+    lay.style.background=`rgba(255,255,255,${0.10+0.34*glow})`;
+    lay.style.boxShadow=`0 0 ${8+glow*18}px rgba(255,255,255,${0.22+0.5*glow}), inset 0 0 6px rgba(255,255,255,.55)`;
+    lay.style.border=`1px solid rgba(255,255,255,${0.25+0.4*glow})`;
+    st.appendChild(lay);
+  }
+  cell.appendChild(st);
 }
 
 function renderArrows(){
@@ -552,7 +604,9 @@ function renderOutputs(){
     mode:state.mode,
     far:[...state.far].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
     near:[...state.near].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
-    movement:state.mode==='linked'?{...state.move}:{fwd:false,back:false,left:false,right:false}
+    movement:state.mode==='linked'?{...state.move}:{fwd:false,back:false,left:false,right:false},
+    beacons:[...state.pyr].map(k=>{const [g,ii]=k.split(':');const i=+ii;return {grid:g,r:Math.floor(i/3),c:i%3};})
+      .sort((a,b)=>a.grid===b.grid?(a.r*3+a.c)-(b.r*3+b.c):(a.grid<b.grid?-1:1))
   };
   $('#json').textContent=JSON.stringify(obj,null,2);
 }
@@ -606,10 +660,22 @@ function buildExportCanvas(){
     ext({x:c.x-r*2,y:c.y-r*2}); ext({x:c.x+r*2,y:c.y+r*2});
     items.push({type:'orb',c,r,z:c.z});
   }
+  function addPyramid(cx,cy){
+    const apexH=CUBE_H+16, baseH=apexH+50, bh=22;        // apex down, base up = inverted
+    const apex=project(cx,cy,apexH);
+    const corners=[project(cx-bh,cy-bh,baseH),project(cx+bh,cy-bh,baseH),
+                   project(cx+bh,cy+bh,baseH),project(cx-bh,cy+bh,baseH)];
+    [apex,...corners].forEach(ext);
+    items.push({type:'pyr',apex,corners,z:Math.max(apex.z,...corners.map(p=>p.z))});
+  }
   for(let i=0;i<9;i++){
     const r=(i/3|0), c=i%3;
     far.has(i)  ? addCube(cellCX(c), FAR_CY +(r-1)*SP,'far') : addCube(cellCX(c), FAR_CY +(r-1)*SP,'empty');
     near.has(i) ? addOrb (cellCX(c), NEAR_CY+(r-1)*SP)       : addCube(cellCX(c), NEAR_CY+(r-1)*SP,'empty');
+  }
+  for(const key of state.pyr){                            // beacons (independent layer)
+    const [gname,ii]=key.split(':'); const i=+ii, r=(i/3|0), c=i%3;
+    addPyramid(cellCX(c), (gname==='far'?FAR_CY:NEAR_CY)+(r-1)*SP);
   }
 
   // canvas sizing (transparent, high-res) -----------------------------------
@@ -646,7 +712,7 @@ function buildExportCanvas(){
         g.fillStyle='rgba(40,70,62,.18)'; g.fill();
         g.lineWidth=1; g.strokeStyle='rgba(140,210,190,.28)'; g.stroke();
       }
-    } else {                                // orb: hot core + halo
+    } else if(it.type==='orb'){             // orb: hot core + halo
       const c=PX(it.c), R=it.r*scale;
       g.save();
       g.shadowColor='rgba(63,214,176,.7)'; g.shadowBlur=R*1.6;
@@ -656,6 +722,31 @@ function buildExportCanvas(){
       grad.addColorStop(1,'rgba(63,214,176,0)');
       g.fillStyle=grad;
       g.beginPath(); g.arc(c.x,c.y,R*1.5,0,Math.PI*2); g.fill();
+      g.restore();
+    } else if(it.type==='pyr'){             // hovering inverted pyramid — white & glowing
+      const apex=PX(it.apex), C=it.corners.map(PX);
+      const faces=[[0,1],[1,2],[2,3],[3,0]].map(([a,b])=>({
+        pts:[C[a],C[b],apex], z:(it.corners[a].z+it.corners[b].z+it.apex.z)/3
+      })).sort((p,q)=>p.z-q.z);             // back faces first
+      g.save();
+      g.shadowColor='rgba(255,255,255,.85)'; g.shadowBlur=16;
+      for(const f of faces){
+        g.beginPath(); g.moveTo(f.pts[0].x,f.pts[0].y);
+        g.lineTo(f.pts[1].x,f.pts[1].y); g.lineTo(f.pts[2].x,f.pts[2].y); g.closePath();
+        g.fillStyle='rgba(255,255,255,0.22)'; g.fill();
+        g.lineWidth=1.4; g.strokeStyle='rgba(255,255,255,0.85)'; g.stroke();
+      }
+      g.restore();
+      // base square outline
+      g.save(); g.beginPath(); C.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+      g.lineWidth=1.2; g.strokeStyle='rgba(255,255,255,0.6)'; g.stroke(); g.restore();
+      // glowing apex point
+      const bw=Math.hypot(C[1].x-C[0].x,C[1].y-C[0].y), aR=Math.max(6,bw*0.55);
+      g.save();
+      const ag=g.createRadialGradient(apex.x,apex.y,0, apex.x,apex.y,aR);
+      ag.addColorStop(0,'rgba(255,255,255,0.98)'); ag.addColorStop(0.4,'rgba(223,233,255,0.5)');
+      ag.addColorStop(1,'rgba(200,220,255,0)');
+      g.fillStyle=ag; g.beginPath(); g.arc(apex.x,apex.y,aR,0,Math.PI*2); g.fill();
       g.restore();
     }
   }
@@ -743,13 +834,29 @@ $('#playBtn').addEventListener('click',play);
 $('#dlPng').addEventListener('click',()=>{ exportPNG(); flash($('#dlPng'),'⬇ SAVED'); });
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
-$('#clearAll').addEventListener('click',()=>{state.far.clear();state.near.clear();state.move={fwd:false,back:false,left:false,right:false};document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));render();});
+$('#clearAll').addEventListener('click',()=>{state.far.clear();state.near.clear();state.pyr.clear();state.pyramidMode=false;state.move={fwd:false,back:false,left:false,right:false};document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));updatePyrUI();render();});
+
+/* ---------- pyramid beacon mode ---------- */
+function updatePyrUI(){
+  const on=state.pyramidMode, tog=$('#pyrToggle');
+  tog.classList.toggle('pyron',on);
+  tog.textContent = on ? '◆ Placing…' : '◇ Toggle Pyramid';
+  $('#pyrActions').hidden = !on;
+  document.querySelector('.stagewrap').classList.toggle('placing',on);
+  $('#pyrHint').innerHTML = on
+    ? 'Click any of the 18 cells to drop or remove a <b>beacon</b>. Then <b>Erase all</b> or <b>Keep</b> to go back to targeting.'
+    : 'A hovering <b>inverted pyramid</b> — placed independently on any of the 18 cells. Toggle on, then click cells to drop beacons.';
+}
+$('#pyrToggle').addEventListener('click',()=>{ state.pyramidMode=!state.pyramidMode; updatePyrUI(); });
+$('#pyrErase').addEventListener('click',()=>{ state.pyr.clear(); state.pyramidMode=false; updatePyrUI(); render(); });
+$('#pyrKeep').addEventListener('click',()=>{ state.pyramidMode=false; updatePyrUI(); });
 $('#pname').addEventListener('input',e=>{state.name=e.target.value;renderOutputs();});
 $('#pdmg').addEventListener('input',e=>{state.dmg=e.target.value;renderOutputs();renderCard();});
 $('#pattach').addEventListener('input',e=>{state.attach=e.target.value;renderOutputs();renderCard();});
 $('#copyAscii').addEventListener('click',()=>{navigator.clipboard.writeText($('#ascii').textContent);flash($('#copyAscii'),'COPIED');});
 $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#json').textContent);flash($('#copyJson'),'COPIED');});
 
+updatePyrUI();
 render();
 </script>
 
