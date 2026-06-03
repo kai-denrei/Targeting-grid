@@ -352,6 +352,18 @@
       </div>
 
       <div>
+        <h2>PNG Export</h2>
+        <div class="dmgrow">
+          <div class="field" style="flex:3"><label>Filename stem</label><input type="text" id="pngStem" value="SW_LAYER_06_TARGETING_" /></div>
+          <div class="field" style="flex:1.2"><label>Serial #</label><input type="text" id="pngSerial" value="001" /></div>
+        </div>
+        <div class="btnrow" style="margin-top:10px">
+          <button class="btn go" id="dlPngPanel">⬇ Download PNG</button>
+        </div>
+        <p class="hint" id="pngPreview" style="margin-top:8px"></p>
+      </div>
+
+      <div>
         <h2>Pyramid Beacon</h2>
         <div class="btnrow">
           <button class="btn" id="pyrToggle">◇ Toggle Pyramid</button>
@@ -821,10 +833,22 @@ function buildExportCanvas(){
   return cv;
 }
 let CRT_EXPORT = true;   // export PNGs WITH the CRT scanline effect
+function pngFileName(){
+  const stem=($('#pngStem')?$('#pngStem').value:'SW_LAYER_06_TARGETING_');
+  const serial=($('#pngSerial')?$('#pngSerial').value:'');
+  let base=(stem+serial).trim().replace(/[\\\/:*?"<>|]+/g,'_');   // strip filename-illegal chars
+  return (base||'targeting')+'.png';
+}
+function updatePngPreview(){ const el=$('#pngPreview'); if(el) el.textContent='→ '+pngFileName(); }
+function bumpSerial(){                                            // auto-advance the serial, preserving zero-padding
+  const el=$('#pngSerial'); if(!el) return;
+  const v=el.value.trim(), m=v.match(/^(\d+)$/);
+  if(m){ el.value=String(+m[1]+1).padStart(v.length,'0'); }
+}
 function exportPNG(){
   const cv=buildExportCanvas();
-  const name=(state.name||'pattern').trim().replace(/[^\w\-]+/g,'_')||'pattern';
-  const a=document.createElement('a'); a.download=name+'_targeting.png'; a.href=cv.toDataURL('image/png'); a.click();
+  const a=document.createElement('a'); a.download=pngFileName(); a.href=cv.toDataURL('image/png'); a.click();
+  bumpSerial(); updatePngPreview();
 }
 
 /* ---------- preview animation ---------- */
@@ -883,6 +907,9 @@ document.querySelectorAll('#moves .mvbtn').forEach(b=>b.addEventListener('click'
 }));
 $('#playBtn').addEventListener('click',play);
 $('#dlPng').addEventListener('click',()=>{ exportPNG(); flash($('#dlPng'),'⬇ SAVED'); });
+$('#dlPngPanel').addEventListener('click',()=>{ exportPNG(); flash($('#dlPngPanel'),'⬇ SAVED'); });
+$('#pngStem').addEventListener('input',updatePngPreview);
+$('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
 $('#clearAll').addEventListener('click',()=>{state.far.clear();state.near.clear();state.pyr.clear();state.pyramidMode=false;state.move={fwd:false,back:false,left:false,right:false};document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));updatePyrUI();render();});
@@ -925,6 +952,7 @@ $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#j
 
 updatePyrUI();
 updateOrbUI();
+updatePngPreview();
 render();
 </script>
 
