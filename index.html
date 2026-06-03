@@ -154,6 +154,24 @@
   /* hovering inverted-pyramid beacon */
   .pyrStack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .pyrLayer{position:absolute;left:50%;top:50%;border-radius:2px}
+  /* flat markers (arrow / crosshair / sightline pending) lying on the cell */
+  .mk{pointer-events:none}
+  .mkArrow{position:absolute;left:50%;top:50%}
+  .mkCross{position:absolute;left:50%;top:50%;transform-style:preserve-3d}
+  .mkc{position:absolute}
+  .mkPending{position:absolute;left:50%;top:50%;width:40%;height:40%;border-radius:50%;animation:pendPulse 1s ease-in-out infinite}
+  @keyframes pendPulse{0%,100%{opacity:.45}50%{opacity:1}}
+  /* board overlay for cross-cell sightlines (shares the board's 3D transform) */
+  .fxLayer{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
+  .losLine{position:absolute;transform-origin:0 50%;border-radius:2px}
+  /* markers toolbar */
+  .toolbar{display:flex;gap:6px}
+  .toolbtn{flex:1;min-width:0;background:#0a1513;border:1px solid var(--line);border-radius:7px;color:var(--muted);
+    font-family:inherit;font-size:16px;line-height:1;padding:9px 0;cursor:pointer;transition:.16s}
+  .toolbtn:hover{color:var(--cream);border-color:#3a5a52}
+  .toolbtn.on{color:#cdd6ff;border-color:#cdd6ff;background:rgba(205,214,255,.12);box-shadow:inset 0 0 14px rgba(205,214,255,.18)}
+  .cfgblock{margin-top:12px}
+  .cfgblock[hidden]{display:none}   /* beat .orbsteps{display:flex} so hidden actually hides */
   /* hit target lives on the TOP face of the cube (raised + tilted with the board),
      so clicks land on the visible upper layer rather than the flat base footprint */
   .hitpad{
@@ -220,6 +238,8 @@
   .sw-hit{background:radial-gradient(circle at 50% 30%,#ff8a5a,#e8472e 60%,#7a2418);box-shadow:0 0 10px rgba(232,71,46,.6)}
   .sw-stance{background:radial-gradient(circle at 50% 30%,#8effdf,#3fd6b0 60%,#1c5f52);box-shadow:0 0 10px rgba(63,214,176,.5);border-radius:50%}
   .sw-pyr{background:radial-gradient(circle at 50% 35%,#ffffff,#dfe9ff 55%,#9fb4ff);box-shadow:0 0 10px rgba(255,255,255,.7);clip-path:polygon(50% 100%, 0 0, 100% 0)}
+  .sw-arrow{background:rgb(240,179,74);box-shadow:0 0 8px rgba(240,179,74,.6);clip-path:polygon(0% 35%,55% 35%,55% 14%,100% 50%,55% 86%,55% 65%,0% 65%)}
+  .sw-cross{background:rgb(255,90,69);box-shadow:0 0 8px rgba(255,90,69,.6);border-radius:50%}
   .sw-empty{background:linear-gradient(180deg,#13201d,#0a1411)}
   .legend b{color:var(--cream)}
 
@@ -312,6 +332,7 @@
           <div class="grid3 near" id="gridNear">
             <div class="grid-frame"></div>
           </div>
+          <div class="fxLayer" id="fxLayer"></div>
         </div>
       </div>
     </div>
@@ -364,20 +385,18 @@
       </div>
 
       <div>
-        <h2>Pyramid Beacon</h2>
-        <div class="btnrow">
-          <button class="btn" id="pyrToggle">◇ Toggle Pyramid</button>
+        <h2>Markers</h2>
+        <div class="toolbar" id="toolbar">
+          <button class="toolbtn" data-tool="pyramid" title="Pyramid beacon">◇</button>
+          <button class="toolbtn" data-tool="arrowL" title="Left arrow">←</button>
+          <button class="toolbtn" data-tool="arrowR" title="Right arrow">→</button>
+          <button class="toolbtn" data-tool="cross" title="Crosshair">✛</button>
+          <button class="toolbtn" data-tool="los" title="Sightline (click two cells)">⋯</button>
         </div>
-        <div class="btnrow" id="pyrActions" style="margin-top:8px" hidden>
-          <button class="btn warn" id="pyrErase">Erase all</button>
-          <button class="btn go" id="pyrKeep">Keep</button>
-        </div>
-        <p class="hint" style="margin-top:10px" id="pyrHint">A hovering <b>inverted pyramid</b> — placed independently on any of the 18 cells. Toggle on, then click cells to drop beacons.</p>
-        <div class="orbsteps" id="pyrSteps" style="margin-top:12px">
-          <div class="orbrow" data-k="width"><span>Width</span><div class="pm"><button data-d="-1">−</button><b id="pv_width"></b><button data-d="1">+</button></div></div>
-          <div class="orbrow" data-k="height"><span>Height</span><div class="pm"><button data-d="-1">−</button><b id="pv_height"></b><button data-d="1">+</button></div></div>
-          <div class="orbrow" data-k="glow"><span>Glow</span><div class="pm"><button data-d="-1">−</button><b id="pv_glow"></b><button data-d="1">+</button></div></div>
-          <div class="orbrow" data-k="hover"><span>Hover</span><div class="pm"><button data-d="-1">−</button><b id="pv_hover"></b><button data-d="1">+</button></div></div>
+        <p class="hint" style="margin-top:10px" id="toolHint">Pick a tool, then click cells to place markers (independent of targeting).</p>
+        <div id="toolCfg"></div>
+        <div class="btnrow" style="margin-top:10px">
+          <button class="btn warn" id="clearMarks">Clear all markers</button>
         </div>
       </div>
 
@@ -397,6 +416,8 @@
           <div class="row"><span class="swatch sw-hit"></span><span><b>square</b> — target must be there to be hit</span></div>
           <div class="row"><span class="swatch sw-stance"></span><span><b>round</b> — P1 must be here to shoot</span></div>
           <div class="row"><span class="swatch sw-pyr"></span><span><b>pyramid</b> — hovering beacon marker</span></div>
+          <div class="row"><span class="swatch sw-arrow"></span><span><b>arrows</b> — direction markers</span></div>
+          <div class="row"><span class="swatch sw-cross"></span><span><b>crosshair</b> / <b>sightline</b></span></div>
           <div class="row"><span class="swatch sw-empty"></span><span>empty</span></div>
         </div>
       </div>
@@ -446,8 +467,14 @@ const state = {
   far:new Set([1,3,4,5,7]),     // hit cells (base layout)
   near:new Set([7]),            // stance cells (fixed: playable-from; linked: single anchor)
   move:{fwd:false,back:false,left:false,right:false},
-  pyramidMode:false,            // when true, clicks place/remove pyramid beacons
-  pyr:new Set()                 // beacon cells, keyed 'far:i' / 'near:i' (independent layer)
+  // ----- markers (independent annotation layer) -----
+  tool:null,                    // active placement tool: 'pyramid'|'arrowL'|'arrowR'|'cross'|'los'|null
+  pyr:new Set(),                // pyramid beacons, keyed 'far:i' / 'near:i'
+  arrowL:new Set(),             // left arrows
+  arrowR:new Set(),             // right arrows
+  cross:new Set(),              // crosshairs
+  los:[],                       // sightline segments {a:'grid:i', b:'grid:i'}
+  losPending:null               // first endpoint while placing a sightline
 };
 
 // Stance-orb ("must be here to shoot") appearance — tunable via the −/+ steppers.
@@ -480,6 +507,13 @@ const pyrCfg = {
   glow  : 1.0,  // glow intensity multiplier
   hover : 3     // float height above the cube top
 };
+// Arrow marker (shared by ← and →). Flat chevron lying on the cell surface.
+const arrowCfg = { size:0.62, weight:0.34, glow:1.0, lift:5, color:'240,179,74' };   // amber
+// Crosshair reticle (flat on the cell).
+const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:6, color:'255,90,69' }; // red
+// Sightline (dotted segment between two cells).
+const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,69' };   // red laser
+const MARK_BASE = ()=> (LAYERS-1)*STEP;   // cube-top height; flat markers sit just above it
 
 /* ---------- cell construction ---------- */
 const LAYERS = 10, STEP = 3.0;
@@ -558,12 +592,14 @@ function renderCube(cell, grid, active){
 }
 
 /* ---------- interaction ---------- */
+const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross'};
 function onCellClick(grid,i){
-  if(state.pyramidMode){
-    const k=grid+':'+i;
-    state.pyr.has(k)?state.pyr.delete(k):state.pyr.add(k);
-    render();
-    return;
+  const key=grid+':'+i;
+  if(state.tool){
+    if(state.tool==='los'){ losClick(key); render(); return; }
+    const set=state[TOOLSET[state.tool]];
+    set.has(key)?set.delete(key):set.add(key);
+    render(); return;
   }
   if(grid==='far'){
     state.far.has(i)?state.far.delete(i):state.far.add(i);
@@ -577,6 +613,15 @@ function onCellClick(grid,i){
     }
   }
   render();
+}
+function losClick(key){
+  if(!state.losPending){
+    const touching=state.los.filter(s=>s.a===key||s.b===key);
+    if(touching.length){ state.los=state.los.filter(s=>!(s.a===key||s.b===key)); return; } // click endpoint -> clear its lines
+    state.losPending=key; return;                                                          // else start a new line
+  }
+  if(state.losPending===key){ state.losPending=null; return; }                             // same cell -> cancel
+  state.los.push({a:state.losPending,b:key}); state.losPending=null;
 }
 
 /* ---------- translation for preview ---------- */
@@ -595,12 +640,79 @@ function render(){
   const far = dispFar||state.far, near=dispNear||state.near;
   document.querySelectorAll('#gridFar .cell').forEach(c=>renderCellFx(c,'far',far));
   document.querySelectorAll('#gridNear .cell').forEach(c=>renderCellFx(c,'near',near));
+  renderLos();
   if(!dispFar){ renderArrows(); renderOutputs(); renderCard(); }
 }
 function renderCellFx(cell, grid, activeSet){
   renderCube(cell, grid, activeSet.has(+cell.dataset.i));
-  const old=cell.querySelector('.pyrStack'); if(old) old.remove();
-  if(state.pyr.has(grid+':'+cell.dataset.i)) renderPyramid(cell);
+  [...cell.querySelectorAll('.pyrStack,.mk')].forEach(n=>n.remove());
+  const key=grid+':'+cell.dataset.i;
+  if(state.pyr.has(key)) renderPyramid(cell);
+  if(state.arrowL.has(key)) renderArrow(cell,'L');
+  if(state.arrowR.has(key)) renderArrow(cell,'R');
+  if(state.cross.has(key)) renderCross(cell);
+  if(state.losPending===key) renderLosPending(cell);
+}
+// flat arrow (chevron) lying on the cell surface, pointing left/right in board space
+function renderArrow(cell, dir){
+  const C=arrowCfg, el=document.createElement('div'); el.className='mk mkArrow';
+  const sz=(C.size*100).toFixed(1)+'%'; el.style.width=sz; el.style.height=sz;
+  const sT=(50-C.weight*50).toFixed(1), sB=(50+C.weight*50).toFixed(1);
+  el.style.clipPath=`polygon(0% ${sT}%, 55% ${sT}%, 55% 14%, 100% 50%, 55% 86%, 55% ${sB}%, 0% ${sB}%)`;
+  el.style.background=`rgb(${C.color})`;
+  el.style.filter=`drop-shadow(0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.85*C.glow).toFixed(2)}))`;
+  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+C.lift}px)`+(dir==='L'?' scaleX(-1)':'');
+  cell.appendChild(el);
+}
+// flat crosshair reticle on the cell surface
+function renderCross(cell){
+  const C=crossCfg, el=document.createElement('div'); el.className='mk mkCross';
+  const sz=(C.size*100).toFixed(1)+'%'; el.style.width=sz; el.style.height=sz;
+  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+C.lift}px)`;
+  const col=`rgb(${C.color})`, glow=`0 0 ${(5*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.9*C.glow).toFixed(2)})`;
+  const tick=(50-C.gap*50).toFixed(1), gw=C.weight;
+  const seg=o=>{ const d=document.createElement('div'); d.className='mkc'; Object.assign(d.style,o); d.style.background=col; d.style.boxShadow=glow; el.appendChild(d); };
+  seg({left:'50%',top:'0%',width:gw+'px',height:tick+'%',transform:'translateX(-50%)'});
+  seg({left:'50%',bottom:'0%',width:gw+'px',height:tick+'%',transform:'translateX(-50%)'});
+  seg({top:'50%',left:'0%',height:gw+'px',width:tick+'%',transform:'translateY(-50%)'});
+  seg({top:'50%',right:'0%',height:gw+'px',width:tick+'%',transform:'translateY(-50%)'});
+  const ring=document.createElement('div'); ring.className='mkc';
+  const rd=(C.gap*100).toFixed(0)+'%';
+  Object.assign(ring.style,{left:'50%',top:'50%',width:rd,height:rd,transform:'translate(-50%,-50%)',border:`${gw}px solid ${col}`,borderRadius:'50%',boxShadow:glow});
+  el.appendChild(ring); cell.appendChild(el);
+}
+// pulsing marker on the cell awaiting its sightline endpoint
+function renderLosPending(cell){
+  const el=document.createElement('div'); el.className='mk mkPending';
+  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+losCfg.lift}px)`;
+  el.style.border=`2px solid rgba(${losCfg.color},.9)`;
+  el.style.boxShadow=`0 0 10px rgba(${losCfg.color},.7)`;
+  cell.appendChild(el);
+}
+// board-local centre of a cell (px), summing the offset chain up to #board
+function cellBoardCenter(grid,i){
+  const cell=document.querySelector(`#grid${grid==='far'?'Far':'Near'} .cell[data-i="${i}"]`);
+  if(!cell) return null;
+  const board=$('#board'); let x=cell.offsetWidth/2, y=cell.offsetHeight/2, n=cell;
+  while(n && n!==board){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
+  return {x,y};
+}
+// dotted sightline segments, drawn in a board-space overlay so they sit on the tilted plane
+function renderLos(){
+  const layer=$('#fxLayer'); if(!layer) return;
+  layer.innerHTML='';
+  const C=losCfg, col=`rgb(${C.color})`;
+  for(const s of state.los){
+    const [ga,ia]=s.a.split(':'), [gb,ib]=s.b.split(':');
+    const A=cellBoardCenter(ga,+ia), B=cellBoardCenter(gb,+ib); if(!A||!B) continue;
+    const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx)*180/Math.PI;
+    const ln=document.createElement('div'); ln.className='losLine';
+    ln.style.left=A.x+'px'; ln.style.top=A.y+'px'; ln.style.width=len+'px'; ln.style.height=C.weight+'px';
+    ln.style.transform=`translateZ(${C.lift}px) rotateZ(${ang}deg)`;
+    ln.style.background=`repeating-linear-gradient(90deg, ${col} 0 ${C.dash}px, transparent ${C.dash}px ${C.dash+C.gap}px)`;
+    ln.style.boxShadow=`0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.75*C.glow).toFixed(2)})`;
+    layer.appendChild(ln);
+  }
 }
 // Hovering inverted pyramid (apex down) — white & glowing. Built as a shrinking
 // stack of squares to match the voxel/hologram look of the cubes; CSS perspective
@@ -675,11 +787,19 @@ function renderOutputs(){
     far:[...state.far].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
     near:[...state.near].sort((x,y)=>x-y).map(i=>({r:Math.floor(i/3),c:i%3})),
     movement:state.mode==='linked'?{...state.move}:{fwd:false,back:false,left:false,right:false},
-    beacons:[...state.pyr].map(k=>{const [g,ii]=k.split(':');const i=+ii;return {grid:g,r:Math.floor(i/3),c:i%3};})
-      .sort((a,b)=>a.grid===b.grid?(a.r*3+a.c)-(b.r*3+b.c):(a.grid<b.grid?-1:1))
+    markers:{
+      pyramids  : keysToCells(state.pyr),
+      arrowsLeft: keysToCells(state.arrowL),
+      arrowsRight:keysToCells(state.arrowR),
+      crosshairs: keysToCells(state.cross),
+      sightlines: state.los.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)}))
+    }
   };
   $('#json').textContent=JSON.stringify(obj,null,2);
 }
+
+function keyToCell(k){ const [g,ii]=k.split(':'); const i=+ii; return {grid:g,r:Math.floor(i/3),c:i%3}; }
+function keysToCells(set){ return [...set].map(keyToCell).sort((a,b)=>a.grid===b.grid?(a.r*3+a.c)-(b.r*3+b.c):(a.grid<b.grid?-1:1)); }
 
 function renderCard(){
   $('#cnum').textContent = state.dmg||'—';
@@ -741,15 +861,34 @@ function buildExportCanvas(){
     [apex,...corners].forEach(ext);
     items.push({type:'pyr',apex,corners,z:Math.max(apex.z,...corners.map(p=>p.z))});
   }
+  const keyCxCy=key=>{ const [g,ii]=key.split(':'); const i=+ii; return {cx:cellCX(i%3), cy:(g==='far'?FAR_CY:NEAR_CY)+((i/3|0)-1)*SP}; };
+  function addArrow(cx,cy,dir){                            // flat chevron at marker height
+    const S=CELL*arrowCfg.size, h=CUBE_H+arrowCfg.lift, w=arrowCfg.weight, sT=0.5-w*0.5, sB=0.5+w*0.5;
+    const fr=[[0,sT],[0.55,sT],[0.55,0.14],[1,0.5],[0.55,0.86],[0.55,sB],[0,sB]];
+    const pts=fr.map(([fx,fy])=>{ let dx=(fx-0.5)*S; if(dir==='L') dx=-dx; return project(cx+dx, cy+(fy-0.5)*S, h); });
+    pts.forEach(ext); items.push({type:'arrow',pts,z:pts.reduce((s,p)=>s+p.z,0)/pts.length});
+  }
+  function addCross(cx,cy){                                // flat reticle
+    const S=CELL*crossCfg.size, half=S/2, gapR=crossCfg.gap*half, h=CUBE_H+crossCfg.lift, P=(x,y)=>project(cx+x,cy+y,h);
+    const segs=[[P(0,-half),P(0,-gapR)],[P(0,gapR),P(0,half)],[P(-half,0),P(-gapR,0)],[P(gapR,0),P(half,0)]];
+    const ring=[]; for(let k=0;k<=20;k++){const a=k/20*Math.PI*2; ring.push(P(Math.cos(a)*gapR,Math.sin(a)*gapR));}
+    [...segs.flat(),...ring].forEach(ext); items.push({type:'cross',segs,ring,z:P(0,0).z});
+  }
+  function addLos(s){                                      // dotted segment between two cell centres
+    const A=keyCxCy(s.a), B=keyCxCy(s.b);
+    const p1=project(A.cx,A.cy,losCfg.lift), p2=project(B.cx,B.cy,losCfg.lift);
+    [p1,p2].forEach(ext); items.push({type:'los',p1,p2,z:(p1.z+p2.z)/2});
+  }
   for(let i=0;i<9;i++){
     const r=(i/3|0), c=i%3;
     far.has(i)  ? addCube(cellCX(c), FAR_CY +(r-1)*SP,'far') : addCube(cellCX(c), FAR_CY +(r-1)*SP,'empty');
     near.has(i) ? addOrb (cellCX(c), NEAR_CY+(r-1)*SP)       : addCube(cellCX(c), NEAR_CY+(r-1)*SP,'empty');
   }
-  for(const key of state.pyr){                            // beacons (independent layer)
-    const [gname,ii]=key.split(':'); const i=+ii, r=(i/3|0), c=i%3;
-    addPyramid(cellCX(c), (gname==='far'?FAR_CY:NEAR_CY)+(r-1)*SP);
-  }
+  for(const key of state.pyr){ const {cx,cy}=keyCxCy(key); addPyramid(cx,cy); }
+  for(const key of state.arrowL){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'L'); }
+  for(const key of state.arrowR){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'R'); }
+  for(const key of state.cross){ const {cx,cy}=keyCxCy(key); addCross(cx,cy); }
+  for(const s of state.los){ addLos(s); }
 
   // canvas sizing (transparent, high-res) -----------------------------------
   const M=70, scale=1300/Math.max(1,(maxX-minX));
@@ -828,6 +967,30 @@ function buildExportCanvas(){
       ag.addColorStop(0,'rgba(255,255,255,0.98)'); ag.addColorStop(0.4,`rgba(223,233,255,${Math.min(0.9,0.5*GI).toFixed(2)})`);
       ag.addColorStop(1,'rgba(200,220,255,0)');
       g.fillStyle=ag; g.beginPath(); g.arc(apex.x,apex.y,aR,0,Math.PI*2); g.fill();
+      g.restore();
+    } else if(it.type==='arrow'){           // flat amber arrow
+      const P=it.pts.map(PX), C=arrowCfg;
+      g.save();
+      g.shadowColor=`rgba(${C.color},${Math.min(1,0.85*C.glow).toFixed(2)})`; g.shadowBlur=8*C.glow*scale*0.4;
+      g.beginPath(); P.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+      g.fillStyle=`rgb(${C.color})`; g.fill();
+      g.restore();
+    } else if(it.type==='cross'){           // flat red reticle
+      const C=crossCfg, col=`rgb(${C.color})`, lw=Math.max(1.2,C.weight*scale*0.5);
+      g.save();
+      g.shadowColor=`rgba(${C.color},${Math.min(1,0.9*C.glow).toFixed(2)})`; g.shadowBlur=6*C.glow*scale*0.4;
+      g.strokeStyle=col; g.lineWidth=lw; g.lineCap='round';
+      for(const [a,b] of it.segs){ const A=PX(a),B=PX(b); g.beginPath(); g.moveTo(A.x,A.y); g.lineTo(B.x,B.y); g.stroke(); }
+      const R=it.ring.map(PX); g.beginPath(); R.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.stroke();
+      g.restore();
+    } else if(it.type==='los'){             // dotted sightline
+      const C=losCfg, p1=PX(it.p1), p2=PX(it.p2);
+      g.save();
+      g.shadowColor=`rgba(${C.color},${Math.min(1,0.75*C.glow).toFixed(2)})`; g.shadowBlur=6*C.glow*scale*0.4;
+      g.strokeStyle=`rgb(${C.color})`; g.lineWidth=Math.max(1.2,C.weight*scale*0.5); g.lineCap='round';
+      g.setLineDash([C.dash*scale*0.5, C.gap*scale*0.5]);
+      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
+      g.setLineDash([]);
       g.restore();
     }
   }
@@ -927,22 +1090,80 @@ $('#pngStem').addEventListener('input',updatePngPreview);
 $('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
-$('#clearAll').addEventListener('click',()=>{state.far.clear();state.near.clear();state.pyr.clear();state.pyramidMode=false;state.move={fwd:false,back:false,left:false,right:false};document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));updatePyrUI();render();});
-
-/* ---------- pyramid beacon mode ---------- */
-function updatePyrUI(){
-  const on=state.pyramidMode, tog=$('#pyrToggle');
-  tog.classList.toggle('pyron',on);
-  tog.textContent = on ? '◆ Placing…' : '◇ Toggle Pyramid';
-  $('#pyrActions').hidden = !on;
-  document.querySelector('.stagewrap').classList.toggle('placing',on);
-  $('#pyrHint').innerHTML = on
-    ? 'Click any of the 18 cells to drop or remove a <b>beacon</b>. Then <b>Erase all</b> or <b>Keep</b> to go back to targeting.'
-    : 'A hovering <b>inverted pyramid</b> — placed independently on any of the 18 cells. Toggle on, then click cells to drop beacons.';
+/* ---------- markers palette ---------- */
+function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null; }
+const CFGS={
+  pyramid:{obj:pyrCfg, steps:{
+    width :{s:2,  min:8,   max:60, label:'Width', fmt:v=>v+'px'},
+    height:{s:2,  min:6,   max:60, label:'Height',fmt:v=>v+'px'},
+    glow  :{s:0.1,min:0,   max:2.5,label:'Glow',  fmt:v=>v.toFixed(1)},
+    hover :{s:3,  min:-12, max:60, label:'Hover', fmt:v=>v+'px'}
+  }},
+  arrow:{obj:arrowCfg, steps:{
+    size  :{s:0.04,min:0.2,max:1.0,label:'Size',  fmt:v=>Math.round(v*100)+'%'},
+    weight:{s:0.04,min:0.1,max:0.7,label:'Weight',fmt:v=>Math.round(v*100)+'%'},
+    glow  :{s:0.1, min:0,  max:2.5,label:'Glow',  fmt:v=>v.toFixed(1)},
+    lift  :{s:2,   min:0,  max:40, label:'Lift',  fmt:v=>v+'px'}
+  }},
+  cross:{obj:crossCfg, steps:{
+    size  :{s:0.04,min:0.2,max:1.0,label:'Size',  fmt:v=>Math.round(v*100)+'%'},
+    gap   :{s:0.04,min:0.1,max:0.8,label:'Gap',   fmt:v=>Math.round(v*100)+'%'},
+    weight:{s:0.4, min:1,  max:8,  label:'Weight',fmt:v=>v.toFixed(1)},
+    glow  :{s:0.1, min:0,  max:2.5,label:'Glow',  fmt:v=>v.toFixed(1)}
+  }},
+  los:{obj:losCfg, steps:{
+    dash  :{s:1,  min:2, max:30, label:'Dash',  fmt:v=>v+'px'},
+    gap   :{s:1,  min:2, max:30, label:'Gap',   fmt:v=>v+'px'},
+    weight:{s:0.4,min:1, max:8,  label:'Weight',fmt:v=>v.toFixed(1)},
+    glow  :{s:0.1,min:0, max:2.5,label:'Glow',  fmt:v=>v.toFixed(1)}
+  }}
+};
+const TOOL_HINTS={
+  pyramid:'Click cells to drop / remove <b>pyramid beacons</b>.',
+  arrowL :'Click cells to place <b>left arrows</b> (click again to remove).',
+  arrowR :'Click cells to place <b>right arrows</b> (click again to remove).',
+  cross  :'Click cells to place <b>crosshairs</b> (click again to remove).',
+  los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Click a used cell to clear its lines.'
+};
+const cfgKeyForTool=t=>(t==='arrowL'||t==='arrowR')?'arrow':t;
+function buildCfgUI(){
+  const host=$('#toolCfg'); host.innerHTML='';
+  for(const name in CFGS){
+    const def=CFGS[name];
+    const blk=document.createElement('div'); blk.className='orbsteps cfgblock'; blk.dataset.cfg=name; blk.hidden=true;
+    for(const k in def.steps){
+      const st=def.steps[k];
+      const row=document.createElement('div'); row.className='orbrow';
+      row.innerHTML=`<span>${st.label}</span><div class="pm"><button data-d="-1">−</button><b></b><button data-d="1">+</button></div>`;
+      const valEl=row.querySelector('b'), upd=()=>valEl.textContent=st.fmt(def.obj[k]);
+      row.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+        def.obj[k]=Math.min(st.max,Math.max(st.min,+(def.obj[k]+(+btn.dataset.d)*st.s).toFixed(3)));
+        upd(); render();
+      }));
+      upd(); blk.appendChild(row);
+    }
+    host.appendChild(blk);
+  }
 }
-$('#pyrToggle').addEventListener('click',()=>{ state.pyramidMode=!state.pyramidMode; updatePyrUI(); });
-$('#pyrErase').addEventListener('click',()=>{ state.pyr.clear(); state.pyramidMode=false; updatePyrUI(); render(); });
-$('#pyrKeep').addEventListener('click',()=>{ state.pyramidMode=false; updatePyrUI(); });
+function setTool(t){
+  state.tool=(state.tool===t)?null:t; state.losPending=null;
+  document.querySelectorAll('#toolbar .toolbtn').forEach(b=>b.classList.toggle('on', b.dataset.tool===state.tool));
+  document.querySelector('.stagewrap').classList.toggle('placing', !!state.tool);
+  const want=state.tool?cfgKeyForTool(state.tool):null;
+  document.querySelectorAll('#toolCfg .cfgblock').forEach(b=>b.hidden=(b.dataset.cfg!==want));
+  $('#toolHint').innerHTML = state.tool ? TOOL_HINTS[state.tool] : 'Pick a tool, then click cells to place markers (independent of targeting).';
+  render();
+}
+document.querySelectorAll('#toolbar .toolbtn').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
+$('#clearMarks').addEventListener('click',()=>{ clearMarkers(); render(); });
+buildCfgUI();
+
+$('#clearAll').addEventListener('click',()=>{
+  state.far.clear(); state.near.clear(); clearMarkers();
+  state.move={fwd:false,back:false,left:false,right:false};
+  document.querySelectorAll('#moves .mvbtn').forEach(b=>b.classList.remove('on'));
+  setTool(null);   // deselects tool + renders
+});
 
 /* ---------- stance-orb steppers ---------- */
 const ORB_STEPS={
@@ -960,30 +1181,13 @@ document.querySelectorAll('#orbSteps .orbrow').forEach(row=>{
   }));
 });
 
-/* ---------- pyramid-beacon steppers ---------- */
-const PYR_STEPS={
-  width :{s:2,  min:8,   max:60, fmt:v=>v+'px'},
-  height:{s:2,  min:6,   max:60, fmt:v=>v+'px'},
-  glow  :{s:0.1,min:0.0, max:2.5,fmt:v=>v.toFixed(1)},
-  hover :{s:3,  min:-12, max:60, fmt:v=>v+'px'}
-};
-function updatePyrCfgUI(){ for(const k in PYR_STEPS) $('#pv_'+k).textContent=PYR_STEPS[k].fmt(pyrCfg[k]); }
-document.querySelectorAll('#pyrSteps .orbrow').forEach(row=>{
-  const k=row.dataset.k, cfg=PYR_STEPS[k];
-  row.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
-    pyrCfg[k]=Math.min(cfg.max, Math.max(cfg.min, +(pyrCfg[k]+(+btn.dataset.d)*cfg.s).toFixed(3)));
-    updatePyrCfgUI(); render();
-  }));
-});
 $('#pname').addEventListener('input',e=>{state.name=e.target.value;renderOutputs();});
 $('#pdmg').addEventListener('input',e=>{state.dmg=e.target.value;renderOutputs();renderCard();});
 $('#pattach').addEventListener('input',e=>{state.attach=e.target.value;renderOutputs();renderCard();});
 $('#copyAscii').addEventListener('click',()=>{navigator.clipboard.writeText($('#ascii').textContent);flash($('#copyAscii'),'COPIED');});
 $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#json').textContent);flash($('#copyJson'),'COPIED');});
 
-updatePyrUI();
 updateOrbUI();
-updatePyrCfgUI();
 updatePngPreview();
 render();
 </script>
