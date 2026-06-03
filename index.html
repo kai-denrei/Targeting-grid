@@ -540,14 +540,17 @@ function renderCellFx(cell, grid, activeSet){
 // makes farther beacons render smaller automatically.
 function renderPyramid(cell){
   const st=document.createElement('div'); st.className='pyrStack';
-  const N=16, BASE=46, HOVER=(LAYERS-1)*STEP+16, PSTEP=3.2;
+  // apex sits just above the cube's top face (the visible square) so the glowing
+  // point reads as planted dead-centre; short body keeps it from biasing backward.
+  // FORWARD shifts the body down-screen to counter the tilt's "height = backward" bias.
+  const N=11, BASE=26, HOVER=(LAYERS-1)*STEP+3, PSTEP=1.9, FORWARD=14;
   for(let l=0;l<N;l++){
     const t=l/(N-1);                       // 0 = apex (bottom), 1 = base (top)
     const size=Math.max(3, BASE*t);
     const glow=1-t;                         // brighter/glowier toward the apex point
     const lay=document.createElement('div'); lay.className='pyrLayer';
     lay.style.width=size+'px'; lay.style.height=size+'px';
-    lay.style.transform=`translate(-50%,-50%) translateZ(${HOVER + l*PSTEP}px)`;
+    lay.style.transform=`translate(-50%,-50%) translateY(${FORWARD}px) translateZ(${HOVER + l*PSTEP}px)`;
     lay.style.background=`rgba(255,255,255,${0.10+0.34*glow})`;
     lay.style.boxShadow=`0 0 ${8+glow*18}px rgba(255,255,255,${0.22+0.5*glow}), inset 0 0 6px rgba(255,255,255,.55)`;
     lay.style.border=`1px solid rgba(255,255,255,${0.25+0.4*glow})`;
@@ -660,8 +663,9 @@ function buildExportCanvas(){
     ext({x:c.x-r*2,y:c.y-r*2}); ext({x:c.x+r*2,y:c.y+r*2});
     items.push({type:'orb',c,r,z:c.z});
   }
-  function addPyramid(cx,cy){
-    const apexH=CUBE_H+16, baseH=apexH+50, bh=22;        // apex down, base up = inverted
+  function addPyramid(cx,cy0){
+    const apexH=CUBE_H+3, baseH=apexH+20, bh=13, FORWARD=14; // apex down (at top-face level), base up = inverted
+    const cy=cy0+FORWARD;                                  // shift forward to centre over the cell (counter tilt bias)
     const apex=project(cx,cy,apexH);
     const corners=[project(cx-bh,cy-bh,baseH),project(cx+bh,cy-bh,baseH),
                    project(cx+bh,cy+bh,baseH),project(cx-bh,cy+bh,baseH)];
