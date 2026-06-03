@@ -373,6 +373,12 @@
           <button class="btn go" id="pyrKeep">Keep</button>
         </div>
         <p class="hint" style="margin-top:10px" id="pyrHint">A hovering <b>inverted pyramid</b> — placed independently on any of the 18 cells. Toggle on, then click cells to drop beacons.</p>
+        <div class="orbsteps" id="pyrSteps" style="margin-top:12px">
+          <div class="orbrow" data-k="width"><span>Width</span><div class="pm"><button data-d="-1">−</button><b id="pv_width"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="height"><span>Height</span><div class="pm"><button data-d="-1">−</button><b id="pv_height"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="glow"><span>Glow</span><div class="pm"><button data-d="-1">−</button><b id="pv_glow"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="hover"><span>Hover</span><div class="pm"><button data-d="-1">−</button><b id="pv_hover"></b><button data-d="1">+</button></div></div>
+        </div>
       </div>
 
       <div>
@@ -466,6 +472,14 @@ function orbShadowCSS(){
   const hi=orbCfg.haloI, hs=orbCfg.haloS;
   return `0 0 ${(14*hs)|0}px 2px rgba(63,214,176,${(0.65*hi).toFixed(2)}), 0 0 ${(32*hs)|0}px 8px rgba(63,214,176,${(0.32*hi).toFixed(2)})`;
 }
+
+// Pyramid-beacon appearance — tunable via the −/+ steppers (drives both renderers).
+const pyrCfg = {
+  width : 26,   // base width (board units)
+  height: 20,   // vertical body height
+  glow  : 1.0,  // glow intensity multiplier
+  hover : 3     // float height above the cube top
+};
 
 /* ---------- cell construction ---------- */
 const LAYERS = 10, STEP = 3.0;
@@ -596,7 +610,7 @@ function renderPyramid(cell){
   // apex sits just above the cube's top face (the visible square) so the glowing
   // point reads as planted dead-centre; short body keeps it from biasing backward.
   // FORWARD shifts the body down-screen to counter the tilt's "height = backward" bias.
-  const N=11, BASE=26, HOVER=(LAYERS-1)*STEP+3, PSTEP=1.9, FORWARD=14;
+  const N=11, BASE=pyrCfg.width, HOVER=(LAYERS-1)*STEP+pyrCfg.hover, PSTEP=pyrCfg.height/(N-1), FORWARD=14, GI=pyrCfg.glow;
   for(let l=0;l<N;l++){
     const t=l/(N-1);                       // 0 = apex (bottom), 1 = base (top)
     const size=Math.max(3, BASE*t);
@@ -604,9 +618,9 @@ function renderPyramid(cell){
     const lay=document.createElement('div'); lay.className='pyrLayer';
     lay.style.width=size+'px'; lay.style.height=size+'px';
     lay.style.transform=`translate(-50%,-50%) translateY(${FORWARD}px) translateZ(${HOVER + l*PSTEP}px)`;
-    lay.style.background=`rgba(255,255,255,${0.10+0.34*glow})`;
-    lay.style.boxShadow=`0 0 ${8+glow*18}px rgba(255,255,255,${0.22+0.5*glow}), inset 0 0 6px rgba(255,255,255,.55)`;
-    lay.style.border=`1px solid rgba(255,255,255,${0.25+0.4*glow})`;
+    lay.style.background=`rgba(255,255,255,${(0.10+0.34*glow).toFixed(3)})`;
+    lay.style.boxShadow=`0 0 ${((8+glow*18)*GI)|0}px rgba(255,255,255,${Math.min(1,(0.22+0.5*glow)*GI).toFixed(3)}), inset 0 0 6px rgba(255,255,255,.55)`;
+    lay.style.border=`1px solid rgba(255,255,255,${Math.min(1,0.25+0.4*glow).toFixed(3)})`;
     st.appendChild(lay);
   }
   cell.appendChild(st);
@@ -719,7 +733,7 @@ function buildExportCanvas(){
     items.push({type:'orb',c,r,z:c.z});
   }
   function addPyramid(cx,cy0){
-    const apexH=CUBE_H+3, baseH=apexH+20, bh=13, FORWARD=14; // apex down (at top-face level), base up = inverted
+    const apexH=CUBE_H+pyrCfg.hover, baseH=apexH+pyrCfg.height, bh=pyrCfg.width/2, FORWARD=14; // apex down, base up = inverted
     const cy=cy0+FORWARD;                                  // shift forward to centre over the cell (counter tilt bias)
     const apex=project(cx,cy,apexH);
     const corners=[project(cx-bh,cy-bh,baseH),project(cx+bh,cy-bh,baseH),
@@ -794,23 +808,24 @@ function buildExportCanvas(){
       const faces=[[0,1],[1,2],[2,3],[3,0]].map(([a,b])=>({
         pts:[C[a],C[b],apex], z:(it.corners[a].z+it.corners[b].z+it.apex.z)/3
       })).sort((p,q)=>p.z-q.z);             // back faces first
+      const GI=pyrCfg.glow, lw=Math.max(1,scale*0.22);
       g.save();
-      g.shadowColor='rgba(255,255,255,.85)'; g.shadowBlur=16;
+      g.shadowColor='rgba(255,255,255,.85)'; g.shadowBlur=14*GI*scale*0.4;
       for(const f of faces){
         g.beginPath(); g.moveTo(f.pts[0].x,f.pts[0].y);
         g.lineTo(f.pts[1].x,f.pts[1].y); g.lineTo(f.pts[2].x,f.pts[2].y); g.closePath();
         g.fillStyle='rgba(255,255,255,0.22)'; g.fill();
-        g.lineWidth=1.4; g.strokeStyle='rgba(255,255,255,0.85)'; g.stroke();
+        g.lineWidth=lw; g.strokeStyle='rgba(255,255,255,0.85)'; g.stroke();
       }
       g.restore();
       // base square outline
       g.save(); g.beginPath(); C.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
-      g.lineWidth=1.2; g.strokeStyle='rgba(255,255,255,0.6)'; g.stroke(); g.restore();
+      g.lineWidth=lw*0.85; g.strokeStyle='rgba(255,255,255,0.6)'; g.stroke(); g.restore();
       // glowing apex point
-      const bw=Math.hypot(C[1].x-C[0].x,C[1].y-C[0].y), aR=Math.max(6,bw*0.55);
+      const bw=Math.hypot(C[1].x-C[0].x,C[1].y-C[0].y), aR=Math.max(6,bw*0.55*(0.7+0.5*GI));
       g.save();
       const ag=g.createRadialGradient(apex.x,apex.y,0, apex.x,apex.y,aR);
-      ag.addColorStop(0,'rgba(255,255,255,0.98)'); ag.addColorStop(0.4,'rgba(223,233,255,0.5)');
+      ag.addColorStop(0,'rgba(255,255,255,0.98)'); ag.addColorStop(0.4,`rgba(223,233,255,${Math.min(0.9,0.5*GI).toFixed(2)})`);
       ag.addColorStop(1,'rgba(200,220,255,0)');
       g.fillStyle=ag; g.beginPath(); g.arc(apex.x,apex.y,aR,0,Math.PI*2); g.fill();
       g.restore();
@@ -944,6 +959,22 @@ document.querySelectorAll('#orbSteps .orbrow').forEach(row=>{
     updateOrbUI(); render();
   }));
 });
+
+/* ---------- pyramid-beacon steppers ---------- */
+const PYR_STEPS={
+  width :{s:2,  min:8,   max:60, fmt:v=>v+'px'},
+  height:{s:2,  min:6,   max:60, fmt:v=>v+'px'},
+  glow  :{s:0.1,min:0.0, max:2.5,fmt:v=>v.toFixed(1)},
+  hover :{s:3,  min:-12, max:60, fmt:v=>v+'px'}
+};
+function updatePyrCfgUI(){ for(const k in PYR_STEPS) $('#pv_'+k).textContent=PYR_STEPS[k].fmt(pyrCfg[k]); }
+document.querySelectorAll('#pyrSteps .orbrow').forEach(row=>{
+  const k=row.dataset.k, cfg=PYR_STEPS[k];
+  row.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+    pyrCfg[k]=Math.min(cfg.max, Math.max(cfg.min, +(pyrCfg[k]+(+btn.dataset.d)*cfg.s).toFixed(3)));
+    updatePyrCfgUI(); render();
+  }));
+});
 $('#pname').addEventListener('input',e=>{state.name=e.target.value;renderOutputs();});
 $('#pdmg').addEventListener('input',e=>{state.dmg=e.target.value;renderOutputs();renderCard();});
 $('#pattach').addEventListener('input',e=>{state.attach=e.target.value;renderOutputs();renderCard();});
@@ -952,6 +983,7 @@ $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#j
 
 updatePyrUI();
 updateOrbUI();
+updatePyrCfgUI();
 updatePngPreview();
 render();
 </script>
