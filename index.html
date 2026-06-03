@@ -660,8 +660,25 @@ function buildExportCanvas(){
     }
   }
 
+  // CRT scanline overlay (mirrors the on-screen body::before).
+  // 'source-atop' clips the lines to already-drawn pixels, so the
+  // transparent background stays transparent — lines only over the grid.
+  if(CRT_EXPORT){
+    g.save();
+    g.globalCompositeOperation='source-atop';
+    const period=Math.max(3, Math.round(3*scale));   // ~CSS 3px, scaled to export res
+    const lineW =Math.max(1, Math.round(period/3));   // 1px dark band per 3px
+    g.fillStyle='rgba(0,0,0,0.22)';
+    for(let y=0;y<H;y+=period) g.fillRect(0,y,W,lineW);
+    // subtle bright phosphor line between scans for extra CRT bite
+    g.fillStyle='rgba(150,230,210,0.05)';
+    for(let y=lineW;y<H;y+=period) g.fillRect(0,y,W,lineW);
+    g.restore();
+  }
+
   return cv;
 }
+let CRT_EXPORT = true;   // export PNGs WITH the CRT scanline effect
 function exportPNG(){
   const cv=buildExportCanvas();
   const name=(state.name||'pattern').trim().replace(/[^\w\-]+/g,'_')||'pattern';
