@@ -162,12 +162,8 @@
   }
   .hitpad:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.55), 0 0 14px rgba(255,255,255,.14)}
   /* shooter stance marker — small orb (~half the cell) with hot core + halo */
-  .orb{
-    position:absolute;left:50%;top:50%;width:50%;height:50%;border-radius:50%;
-    background:radial-gradient(circle at 50% 50%,
-      #ffffff 0%, #b8ffec 16%, #3fd6b0 46%, rgba(63,214,176,.45) 66%, rgba(63,214,176,0) 80%);
-    box-shadow:0 0 14px 2px rgba(63,214,176,.65), 0 0 32px 8px rgba(63,214,176,.32);
-  }
+  /* size / background / box-shadow are set inline from orbCfg (see renderCube) */
+  .orb{position:absolute;left:50%;top:50%;width:40%;height:40%;border-radius:50%}
   /* output panel */
   .panel{
     border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,#0d1816,#091210);
@@ -209,6 +205,14 @@
   .btn.go.playing{border-color:var(--amber);color:var(--amber);background:rgba(224,166,74,.1)}
   .btn.pyron{border-color:#cdd6ff;color:#eef2ff;background:rgba(205,214,255,.12);box-shadow:inset 0 0 16px rgba(205,214,255,.18)}
   .stagewrap.placing{outline:1px dashed rgba(205,214,255,.45);outline-offset:-4px}
+
+  .orbsteps{display:flex;flex-direction:column;gap:8px}
+  .orbrow{display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .pm{display:flex;align-items:center;gap:8px}
+  .pm button{width:26px;height:26px;display:grid;place-items:center;background:#0a1513;border:1px solid var(--line);border-radius:6px;color:var(--teal);font-family:inherit;font-size:15px;line-height:1;cursor:pointer;transition:.16s}
+  .pm button:hover{border-color:var(--teal-dim);color:var(--cream);box-shadow:0 0 8px rgba(63,214,176,.22)}
+  .pm button:active{transform:translateY(1px)}
+  .pm b{min-width:46px;text-align:center;color:var(--cream);font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500}
 
   .legend{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--muted)}
   .legend .row{display:flex;align-items:center;gap:10px}
@@ -360,6 +364,16 @@
       </div>
 
       <div>
+        <h2>Stance Orb</h2>
+        <div class="orbsteps" id="orbSteps">
+          <div class="orbrow" data-k="size"><span>Circle size</span><div class="pm"><button data-d="-1">−</button><b id="ov_size"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="core"><span>Hot core</span><div class="pm"><button data-d="-1">−</button><b id="ov_core"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="haloI"><span>Halo glow</span><div class="pm"><button data-d="-1">−</button><b id="ov_haloI"></b><button data-d="1">+</button></div></div>
+          <div class="orbrow" data-k="haloS"><span>Halo size</span><div class="pm"><button data-d="-1">−</button><b id="ov_haloS"></b><button data-d="1">+</button></div></div>
+        </div>
+      </div>
+
+      <div>
         <h2>Legend</h2>
         <div class="legend">
           <div class="row"><span class="swatch sw-hit"></span><span><b>square</b> — target must be there to be hit</span></div>
@@ -418,6 +432,29 @@ const state = {
   pyr:new Set()                 // beacon cells, keyed 'far:i' / 'near:i' (independent layer)
 };
 
+// Stance-orb ("must be here to shoot") appearance — tunable via the −/+ steppers.
+// Defaults: circle 20% smaller than before (.50 -> .40) and a slightly reduced halo.
+const orbCfg = {
+  size : 0.40,   // circle diameter as a fraction of the cell
+  core : 0.35,   // hot white-cyan core extent (fraction of orb radius)
+  haloI: 0.75,   // halo intensity (glow opacity)
+  haloS: 0.85    // halo size (glow spread)
+};
+// Shared gradient stops + shadow string so on-screen and PNG export stay identical.
+function orbGradStops(){
+  const c1=Math.min(0.40, orbCfg.core*0.5);
+  const c2=Math.min(0.78, orbCfg.core*0.5+0.30);
+  const outA=(0.45*Math.min(1.3,orbCfg.haloI)).toFixed(2);
+  return [[0,'#ffffff'],[c1,'#b8ffec'],[c2,'#3fd6b0'],[0.82,`rgba(63,214,176,${outA})`],[1,'rgba(63,214,176,0)']];
+}
+function orbBgCSS(){
+  return 'radial-gradient(circle at 50% 50%, '+orbGradStops().map(([p,c])=>`${c} ${(p*100).toFixed(0)}%`).join(', ')+')';
+}
+function orbShadowCSS(){
+  const hi=orbCfg.haloI, hs=orbCfg.haloS;
+  return `0 0 ${(14*hs)|0}px 2px rgba(63,214,176,${(0.65*hi).toFixed(2)}), 0 0 ${(32*hs)|0}px 8px rgba(63,214,176,${(0.32*hi).toFixed(2)})`;
+}
+
 /* ---------- cell construction ---------- */
 const LAYERS = 10, STEP = 3.0;
 function buildGrid(el, grid){
@@ -446,6 +483,10 @@ function renderCube(cell, grid, active){
   // SHOOTER stance → compact glowing orb (~half cell), hot core + halo
   if(active && !isFar){
     const orb=document.createElement('div'); orb.className='orb';
+    const sp=(orbCfg.size*100).toFixed(1)+'%';
+    orb.style.width=sp; orb.style.height=sp;
+    orb.style.background=orbBgCSS();
+    orb.style.boxShadow=orbShadowCSS();
     orb.style.transform=`translate(-50%,-50%) translateZ(${(LAYERS-1)*STEP*0.55}px)`;
     stack.appendChild(orb);
     cell.appendChild(stack);
@@ -658,9 +699,11 @@ function buildExportCanvas(){
     items.push({type:'cube',kind,cx,cy,z:C.reduce((s,p)=>s+p.z,0)/8});
   }
   function addOrb(cx,cy){
-    const c=project(cx,cy,ORB_H), e=project(cx+CELL*0.25,cy,ORB_H);
+    const Rb=CELL*orbCfg.size/2;                    // orb radius in board units
+    const c=project(cx,cy,ORB_H), e=project(cx+Rb,cy,ORB_H);
     const r=Math.hypot(e.x-c.x,e.y-c.y);
-    ext({x:c.x-r*2,y:c.y-r*2}); ext({x:c.x+r*2,y:c.y+r*2});
+    const halo=r*(1+2.2*orbCfg.haloS);              // leave room for the bloom
+    ext({x:c.x-halo,y:c.y-halo}); ext({x:c.x+halo,y:c.y+halo});
     items.push({type:'orb',c,r,z:c.z});
   }
   function addPyramid(cx,cy0){
@@ -724,16 +767,15 @@ function buildExportCanvas(){
           g.lineWidth=Math.max(1, scale*0.18); g.strokeStyle=stroke; g.stroke();
         }
       }
-    } else if(it.type==='orb'){             // orb: hot core + halo
+    } else if(it.type==='orb'){             // orb: hot core + halo (driven by orbCfg)
       const c=PX(it.c), R=it.r*scale;
       g.save();
-      g.shadowColor='rgba(63,214,176,.7)'; g.shadowBlur=R*1.6;
-      const grad=g.createRadialGradient(c.x,c.y,0, c.x,c.y,R*1.5);
-      grad.addColorStop(0,'#ffffff'); grad.addColorStop(0.16,'#b8ffec');
-      grad.addColorStop(0.46,'#3fd6b0'); grad.addColorStop(0.66,'rgba(63,214,176,.45)');
-      grad.addColorStop(1,'rgba(63,214,176,0)');
+      g.shadowColor=`rgba(63,214,176,${(0.62*orbCfg.haloI).toFixed(3)})`;
+      g.shadowBlur=R*2.0*orbCfg.haloS;
+      const grad=g.createRadialGradient(c.x,c.y,0, c.x,c.y,R);
+      orbGradStops().forEach(([p,col])=>grad.addColorStop(p,col));
       g.fillStyle=grad;
-      g.beginPath(); g.arc(c.x,c.y,R*1.5,0,Math.PI*2); g.fill();
+      g.beginPath(); g.arc(c.x,c.y,R,0,Math.PI*2); g.fill();
       g.restore();
     } else if(it.type==='pyr'){             // hovering inverted pyramid — white & glowing
       const apex=PX(it.apex), C=it.corners.map(PX);
@@ -859,6 +901,22 @@ function updatePyrUI(){
 $('#pyrToggle').addEventListener('click',()=>{ state.pyramidMode=!state.pyramidMode; updatePyrUI(); });
 $('#pyrErase').addEventListener('click',()=>{ state.pyr.clear(); state.pyramidMode=false; updatePyrUI(); render(); });
 $('#pyrKeep').addEventListener('click',()=>{ state.pyramidMode=false; updatePyrUI(); });
+
+/* ---------- stance-orb steppers ---------- */
+const ORB_STEPS={
+  size :{s:0.04,min:0.16,max:0.80,fmt:v=>Math.round(v*100)+'%'},
+  core :{s:0.05,min:0.10,max:0.80,fmt:v=>Math.round(v*100)+'%'},
+  haloI:{s:0.10,min:0.00,max:1.50,fmt:v=>v.toFixed(1)},
+  haloS:{s:0.10,min:0.20,max:2.50,fmt:v=>v.toFixed(1)}
+};
+function updateOrbUI(){ for(const k in ORB_STEPS) $('#ov_'+k).textContent=ORB_STEPS[k].fmt(orbCfg[k]); }
+document.querySelectorAll('#orbSteps .orbrow').forEach(row=>{
+  const k=row.dataset.k, cfg=ORB_STEPS[k];
+  row.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+    orbCfg[k]=Math.min(cfg.max, Math.max(cfg.min, +(orbCfg[k]+(+btn.dataset.d)*cfg.s).toFixed(3)));
+    updateOrbUI(); render();
+  }));
+});
 $('#pname').addEventListener('input',e=>{state.name=e.target.value;renderOutputs();});
 $('#pdmg').addEventListener('input',e=>{state.dmg=e.target.value;renderOutputs();renderCard();});
 $('#pattach').addEventListener('input',e=>{state.attach=e.target.value;renderOutputs();renderCard();});
@@ -866,6 +924,7 @@ $('#copyAscii').addEventListener('click',()=>{navigator.clipboard.writeText($('#
 $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#json').textContent);flash($('#copyJson'),'COPIED');});
 
 updatePyrUI();
+updateOrbUI();
 render();
 </script>
 
