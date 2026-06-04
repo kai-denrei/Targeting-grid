@@ -8,3 +8,8 @@ cd "$ROOT"
 TOK=$(grep -oE 'name="cb" content="[0-9a-f]+"' index.html | grep -oE '[0-9a-f]{8}' | head -1)
 sed -i '' -E "s/const VERSION   = '[^']*';/const VERSION   = 'cb-${TOK}';/" sw.js
 echo "▸ synced sw.js cache version -> cb-${TOK}"
+
+# Stamp the current git commit (the build the version chip's 3 glyphs encode).
+BUILD=$(git rev-parse --short HEAD 2>/dev/null || echo "0000000")
+sed -i '' -E "s/(name=\"build\" content=\")[0-9a-f]+(\")/\1${BUILD}\2/" index.html
+echo "▸ stamped build commit -> ${BUILD}"

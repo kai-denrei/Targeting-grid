@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=3a2d8f5c" />
+<link rel="manifest" href="manifest.webmanifest?v=50eae2f6" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=3a2d8f5c" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=3a2d8f5c" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=50eae2f6" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=50eae2f6" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=3a2d8f5c" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=50eae2f6" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -154,21 +154,16 @@
   /* hovering inverted-pyramid beacon */
   .pyrStack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .pyrLayer{position:absolute;left:50%;top:50%;border-radius:2px}
-  /* build / version badge (top-left) */
-  #verBadge{
-    position:fixed;top:8px;left:8px;z-index:2000;display:flex;align-items:center;gap:9px;
-    background:rgba(8,16,14,.82);border:1px solid var(--line);border-radius:9px;padding:6px 11px;
-    cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5);
-    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:border-color .16s;
-    user-select:none;
+  /* version chip — 3 shape glyphs of the build, next to the logo */
+  .verchip{
+    display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto;
+    padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:rgba(6,16,14,.5);
+    cursor:pointer;transition:border-color .16s;user-select:none;
   }
-  #verBadge:hover{border-color:var(--teal-dim)}
-  .vb-bars{display:flex;flex-direction:column;gap:2px}
-  .vb-row{display:flex;gap:2px}
-  .vb-row i{width:4px;height:4px;border-radius:1px;background:rgba(255,255,255,.10)}
-  .vb-txt{display:flex;flex-direction:column;line-height:1.1}
-  .vb-txt b{font-size:12px;font-weight:700;color:var(--cream);letter-spacing:.04em}
-  .vb-txt span{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:var(--muted);letter-spacing:.1em;margin-top:1px}
+  .verchip:hover{border-color:var(--teal-dim)}
+  .vc-glyphs{display:flex;gap:3px}
+  .vc-glyphs svg{width:15px;height:15px;display:block;filter:drop-shadow(0 0 3px rgba(0,0,0,.5))}
+  .vc-hash{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.12em;color:var(--muted)}
   /* flat markers (arrow / crosshair / sightline pending) lying on the cell */
   .mk{pointer-events:none}
   .mkArrow{position:absolute;left:50%;top:50%}
@@ -329,18 +324,18 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="3a2d8f5c">
+  <meta name="cb" content="50eae2f6">
+  <meta name="build" content="955acdf">
 </head>
 <body>
-  <!-- build / version badge (token bumped by scripts/bump.sh) -->
-  <div id="verBadge" title="Build version — click to copy">
-    <div class="vb-bars" id="vbBars"></div>
-    <div class="vb-txt"><b>Reiyaa</b><span id="vbHash">--------</span></div>
-  </div>
 <div class="wrap">
 
   <header class="topbar">
     <div class="glyph">的</div>
+    <div class="verchip" id="verchip" title="build version — click to copy">
+      <div class="vc-glyphs" id="vcGlyphs"></div>
+      <span class="vc-hash" id="vcHash">·······</span>
+    </div>
     <div class="titles">
       <h1>Targeting Pattern Editor</h1>
       <p>Near grid → far grid &nbsp;·&nbsp; stance maps to footprint</p>
@@ -1311,29 +1306,39 @@ updateOrbUI();
 updatePngPreview();
 render();
 
-/* ---------- build / version badge ---------- */
-(function verBadge(){
-  const meta=document.querySelector('meta[name="cb"]');
-  const tok=(meta&&meta.content)||'00000000';
-  const hashEl=$('#vbHash'); if(hashEl) hashEl.textContent=tok;
-  const bars=$('#vbBars');
-  if(bars){
-    const v=parseInt(tok,16)>>>0;                 // 32-bit token -> 3×6 LED grid
-    const rowCols=['#5aa6ff','#3fd6b0','#e0a64a']; // electric blue / teal / amber
-    for(let r=0;r<3;r++){
-      const row=document.createElement('div'); row.className='vb-row';
-      for(let c=0;c<6;c++){
-        const on=(v>>(r*6+c))&1, seg=document.createElement('i');
-        if(on){ seg.style.background=rowCols[r]; seg.style.boxShadow=`0 0 4px ${rowCols[r]}`; }
-        row.appendChild(seg);
-      }
-      bars.appendChild(row);
+/* ---------- version chip: 3 shape glyphs of the build hash ----------
+   Cache-busting shape encoding: each byte -> cell = byte%64 -> row=cell//8
+   (colour band), col=cell%8 (shape). First 3 bytes of the build hash render
+   as 3 tinted glyph tiles. */
+(function verChip(){
+  const COLORS=['#0080FF','#4CC4FF','#99EEFF','#CCFFFF','#FFFFCC','#FFEE99','#FFC44C','#FF8000'];
+  const SHAPES=[
+    '<rect x="16" y="16" width="96" height="96" fill="currentColor"/>',
+    '<polygon points="64,16 112,112 16,112" fill="currentColor"/>',
+    '<circle cx="64" cy="64" r="48" fill="currentColor"/>',
+    '<rect x="16" y="16" width="96" height="40" fill="currentColor"/><rect x="16" y="72" width="96" height="40" fill="currentColor"/>',
+    '<rect x="20" y="20" width="88" height="32" fill="none" stroke="currentColor" stroke-width="10"/><rect x="20" y="76" width="88" height="32" fill="none" stroke="currentColor" stroke-width="10"/>',
+    '<polygon points="64,20 108,108 20,108" fill="none" stroke="currentColor" stroke-width="10"/>',
+    '<circle cx="64" cy="64" r="44" fill="none" stroke="currentColor" stroke-width="10"/>',
+    '<rect x="20" y="20" width="88" height="88" fill="none" stroke="currentColor" stroke-width="10"/>'
+  ];
+  const meta=document.querySelector('meta[name="build"]');
+  const build=((meta&&meta.content)||'0000000').toLowerCase();
+  const hx=build.replace(/[^0-9a-f]/g,'').padStart(8,'0');   // match decode.py: left-pad to 8, bytes at 0,2,4
+  const host=$('#vcGlyphs'), hashEl=$('#vcHash');
+  if(hashEl) hashEl.textContent=build;
+  if(host){
+    host.innerHTML='';
+    for(let i=0;i<3;i++){
+      const byte=parseInt(hx.substr(i*2,2),16)||0, cell=byte%64, color=COLORS[cell>>3], shape=SHAPES[cell&7];
+      host.insertAdjacentHTML('beforeend',
+        `<svg viewBox="0 0 128 128" style="color:${color}"><rect width="128" height="128" rx="22" fill="rgba(255,255,255,.06)"/>${shape}</svg>`);
     }
   }
-  const badge=$('#verBadge');
-  if(badge) badge.addEventListener('click',()=>{
-    if(navigator.clipboard) navigator.clipboard.writeText(tok);
-    const h=$('#vbHash'), o=h.textContent; h.textContent='copied'; setTimeout(()=>h.textContent=o,800);
+  const chip=$('#verchip');
+  if(chip) chip.addEventListener('click',()=>{
+    if(navigator.clipboard) navigator.clipboard.writeText(build);
+    const o=hashEl.textContent; hashEl.textContent='copied'; setTimeout(()=>hashEl.textContent=o,800);
   });
 })();
 </script>
