@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=c3cf8270" />
+<link rel="manifest" href="manifest.webmanifest?v=07f52822" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=c3cf8270" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=c3cf8270" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=07f52822" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=07f52822" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=c3cf8270" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=07f52822" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -331,7 +331,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="c3cf8270">
+  <meta name="cb" content="07f52822">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -341,6 +341,9 @@
       <div class="lib-head">
         <h2>Pattern Library</h2>
         <input type="text" id="libSearch" placeholder="Search patterns…" autocomplete="off" />
+        <button class="btn" id="libExport" title="Download all patterns as a .json file">⤓ Export</button>
+        <button class="btn" id="libImport" title="Load patterns from a .json file">⤒ Import</button>
+        <input type="file" id="libImportFile" accept="application/json,.json" hidden />
         <button class="btn" id="libClose">✕ Close</button>
       </div>
       <div class="lib-grid" id="libGrid"></div>
@@ -1475,11 +1478,41 @@ function renderLibrary(){
 }
 function openLibrary(){ $('#libOverlay').hidden=false; $('#libSearch').value=''; renderLibrary(); $('#libSearch').focus(); }
 function closeLibrary(){ $('#libOverlay').hidden=true; }
+// export all patterns to a .json file (portable backup — keep it / commit it / share it)
+function exportPatterns(){
+  const arr=loadPatterns();
+  if(!arr.length){ flash($('#libExport'),'EMPTY'); return; }
+  const blob=new Blob([JSON.stringify(arr,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='targeting-patterns.json'; a.click(); URL.revokeObjectURL(a.href);
+  flash($('#libExport'),'✓ SAVED');
+}
+// import patterns from a .json file (merge by name; existing names are updated)
+function importPatterns(file){
+  const rd=new FileReader();
+  rd.onload=()=>{
+    let incoming; try{ incoming=JSON.parse(rd.result); }catch(e){ flash($('#libImport'),'BAD FILE'); return; }
+    if(!Array.isArray(incoming)){ flash($('#libImport'),'BAD FILE'); return; }
+    const arr=loadPatterns();
+    for(const p of incoming){
+      if(!p||!p.name) continue;
+      const i=arr.findIndex(x=>(x.name||'').toLowerCase()===(p.name||'').toLowerCase());
+      if(!p.id) p.id='p'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
+      if(i>=0){ p.id=arr[i].id; arr[i]=p; } else arr.push(p);
+    }
+    savePatternsArr(arr); refreshPatternUI(); renderLibrary();
+    flash($('#libImport'),'✓ '+incoming.length);
+  };
+  rd.readAsText(file);
+}
 $('#pNew').addEventListener('click',newPattern);
 $('#pSave').addEventListener('click',savePattern);
 $('#pSelect').addEventListener('change',e=>{ const p=loadPatterns().find(x=>x.id===e.target.value); if(p) applyPattern(p); });
 $('#pLibraryTop').addEventListener('click',openLibrary);
 $('#libClose').addEventListener('click',closeLibrary);
+$('#libExport').addEventListener('click',exportPatterns);
+$('#libImport').addEventListener('click',()=>$('#libImportFile').click());
+$('#libImportFile').addEventListener('change',e=>{ if(e.target.files[0]) importPatterns(e.target.files[0]); e.target.value=''; });
 $('#libSearch').addEventListener('input',renderLibrary);
 $('#libOverlay').addEventListener('click',e=>{ if(e.target.id==='libOverlay') closeLibrary(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#libOverlay').hidden) closeLibrary(); });
