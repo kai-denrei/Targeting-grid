@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=b66e236f" />
+<link rel="manifest" href="manifest.webmanifest?v=94cf44a0" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=b66e236f" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=b66e236f" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=94cf44a0" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=94cf44a0" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=b66e236f" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=94cf44a0" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -328,7 +328,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="b66e236f">
+  <meta name="cb" content="94cf44a0">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -740,12 +740,13 @@ function renderAoE(cell, a){
     }
     cell.appendChild(tile);
   }
-  // modifier number (billboarded to face the camera so it stays readable)
+  // modifier number, centred on the top-layer face (billboarded to face the camera)
   const num=document.createElement('div'); num.className='mk aoeNum';
-  num.textContent = a.dist===0 ? '0' : ('−'+(aoeCfg.falloff*a.dist));
-  num.style.color=`rgb(${col})`;
-  num.style.textShadow=`0 0 7px rgba(${col},.9), 0 1px 2px rgba(0,0,0,.6)`;
-  num.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+13}px) rotateX(-58deg)`;
+  num.textContent = a.dist===0 ? 'MAX' : ('−'+(aoeCfg.falloff*a.dist));
+  num.style.color = a.dist===0 ? 'rgb(255,72,52)' : `rgb(${col})`;
+  num.style.textShadow=`0 0 7px rgba(${a.dist===0?'255,72,52':col},.9), 0 1px 2px rgba(0,0,0,.6)`;
+  if(a.dist===0) num.style.fontSize='14px';
+  num.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+1}px) rotateX(-58deg)`;
   cell.appendChild(num);
 }
 // flat arrow (chevron) lying on the cell surface, pointing left/right in board space
@@ -1058,7 +1059,7 @@ function buildExportCanvas(){
   // AoE: per-cell falloff tile + number, and (style 3) a radial blast per centre
   function addAoECell(cx,cy,a){
     const corners=[project(cx-hw,cy-hw,CUBE_H+1),project(cx+hw,cy-hw,CUBE_H+1),project(cx+hw,cy+hw,CUBE_H+1),project(cx-hw,cy+hw,CUBE_H+1)];
-    const ctr=project(cx,cy,CUBE_H+13); [...corners,ctr].forEach(ext);
+    const ctr=project(cx,cy,CUBE_H+1); [...corners,ctr].forEach(ext);   // number centred on top-layer face
     items.push({type:'aoecell',corners,ctr,dist:a.dist,z:Math.max(...corners.map(p=>p.z))});
   }
   function addAoEBlast(cx,cy){
@@ -1197,10 +1198,10 @@ function buildExportCanvas(){
         g.beginPath(); P.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
         g.lineWidth=Math.max(1.5,scale*0.3); g.strokeStyle=`rgba(${col},${Math.min(1,0.85*GI)})`; g.stroke(); g.restore();
       }
-      const ctr=PX(it.ctr), fs=Math.max(11, scale*3.0);
-      g.save(); g.shadowColor=`rgba(${col},.9)`; g.shadowBlur=6*scale*0.4;
-      g.fillStyle=`rgb(${col})`; g.font=`700 ${fs}px "JetBrains Mono",monospace`; g.textAlign='center'; g.textBaseline='middle';
-      g.fillText(it.dist===0?'0':('−'+(aoeCfg.falloff*it.dist)), ctr.x, ctr.y); g.restore();
+      const ctr=PX(it.ctr), isMax=it.dist===0, fs=Math.max(11, scale*(isMax?2.4:3.0)), tcol=isMax?'255,72,52':col;
+      g.save(); g.shadowColor=`rgba(${tcol},.9)`; g.shadowBlur=6*scale*0.4;
+      g.fillStyle=`rgb(${tcol})`; g.font=`700 ${fs}px "JetBrains Mono",monospace`; g.textAlign='center'; g.textBaseline='middle';
+      g.fillText(isMax?'MAX':('−'+(aoeCfg.falloff*it.dist)), ctr.x, ctr.y); g.restore();
     }
   }
 
