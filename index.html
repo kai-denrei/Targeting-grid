@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=8318e821" />
+<link rel="manifest" href="manifest.webmanifest?v=b8a97f1f" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=8318e821" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=8318e821" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=b8a97f1f" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=b8a97f1f" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=8318e821" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=b8a97f1f" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -163,6 +163,9 @@
   .fxLayer{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .losLine{position:absolute;transform-origin:0 50%;border-radius:2px}
   .arcDot{position:absolute;border-radius:50%}
+  /* 2D screen-space overlay for the ballistic arc (no perspective → never overshoots) */
+  .fx2d{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+  .arcDot2{position:absolute;border-radius:50%;transform:translate(-50%,-50%)}
   /* AoE overlays */
   .aoeTile{position:absolute;inset:7%;border-radius:5px}
   .aoeNum{position:absolute;left:50%;top:50%;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:17px;line-height:1;white-space:nowrap}
@@ -328,7 +331,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="8318e821">
+  <meta name="cb" content="b8a97f1f">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -378,6 +381,7 @@
           <div class="fxLayer" id="fxLayer"></div>
         </div>
       </div>
+      <div class="fx2d" id="fx2d"></div>
     </div>
 
     <!-- CONTROL PANEL -->
@@ -791,6 +795,15 @@ function cellBoardCenter(grid,i){
   while(n && n!==board){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
   return {x,y};
 }
+// screen-space centre of a cell's TOP face (via its hit-pad, which sits at the
+// top layer), relative to a given origin rect. Used by the 2D ballistic overlay.
+function cellTopScreen(key, originRect){
+  const [g,i]=key.split(':');
+  const hp=document.querySelector(`#grid${g==='far'?'Far':'Near'} .cell[data-i="${i}"] .hitpad`);
+  if(!hp) return null;
+  const r=hp.getBoundingClientRect();
+  return {x:r.left+r.width/2-originRect.left, y:r.top+r.height/2-originRect.top};
+}
 // per-instance manager for sightlines / ballistic arcs (+ add, edit, delete)
 function fmtKey(k){ const [g,i]=k.split(':'); return (g==='far'?'F':'N')+i; }
 function renderInstances(){
@@ -841,18 +854,26 @@ function renderOverlay(){
     ln.style.boxShadow=`0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.75*C.glow).toFixed(2)})`;
     layer.appendChild(ln);
   }
-  // ballistic arcs — electric-blue dots sampled along a parabola (height via translateZ)
-  const Ac=arcCfg, acol=`rgb(${Ac.color})`, glow=`0 0 ${(5*Ac.glow).toFixed(1)}px rgba(${Ac.color},${Math.min(1,0.9*Ac.glow).toFixed(2)})`;
-  for(const s of state.arc){
-    const [A,B]=ends(s); if(!A||!B) continue;
-    const chord=Math.hypot(B.x-A.x,B.y-A.y), N=Math.max(6, Math.round((chord+Ac.height)/Math.max(4,Ac.gap)));
-    for(let i=0;i<=N;i++){
-      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=MARK_BASE()+4*Ac.height*t*(1-t);
-      const d=document.createElement('div'); d.className='arcDot';
-      d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
-      d.style.transform=`translate(-50%,-50%) translateZ(${z}px)`;
-      d.style.background=acol; d.style.boxShadow=glow;
-      layer.appendChild(d);
+  // ballistic arcs — drawn in a 2D screen-space overlay as a parabola between the
+  // two top-face centres. Because it's screen-space, it always stays between the
+  // endpoints and lands exactly on the target, at ANY arc height (no overshoot).
+  const f2=$('#fx2d');
+  if(f2){
+    f2.innerHTML='';
+    const Ac=arcCfg, acol=`rgb(${Ac.color})`, glow=`0 0 ${(5*Ac.glow).toFixed(1)}px rgba(${Ac.color},${Math.min(1,0.9*Ac.glow).toFixed(2)})`;
+    const orig=f2.getBoundingClientRect();
+    for(const s of state.arc){
+      const A=cellTopScreen(s.a,orig), B=cellTopScreen(s.b,orig); if(!A||!B) continue;
+      const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
+      let px=-dy/len, py=dx/len; if(py>0){px=-px;py=-py;}            // unit perpendicular, pointing up
+      const N=Math.max(6, Math.round((len+Ac.height)/Math.max(4,Ac.gap)));
+      for(let i=0;i<=N;i++){
+        const t=i/N, b=4*t*(1-t)*Ac.height, x=A.x+dx*t+px*b, y=A.y+dy*t+py*b;
+        const d=document.createElement('div'); d.className='arcDot2';
+        d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
+        d.style.background=acol; d.style.boxShadow=glow;
+        f2.appendChild(d);
+      }
     }
   }
   // AoE style 3 — a flat radial "blast" centred on each AoE cell, fading across the radius
@@ -1036,12 +1057,15 @@ function buildExportCanvas(){
     const p1=project(A.cx,A.cy,losCfg.lift), p2=project(B.cx,B.cy,losCfg.lift);
     [p1,p2].forEach(ext); items.push({type:'los',p1,p2,z:(p1.z+p2.z)/2});
   }
-  function addArc(s){                                      // ballistic parabola sampled as projected dots
+  function addArc(s){                                      // ballistic: screen-space parabola between top-face centres
     const A=keyCxCy(s.a), B=keyCxCy(s.b), H=arcCfg.height;
-    const chord=Math.hypot(B.cx-A.cx,B.cy-A.cy), N=Math.max(6, Math.round((chord+H)/Math.max(4,arcCfg.gap)));
+    const pA=project(A.cx,A.cy,CUBE_H), pB=project(B.cx,B.cy,CUBE_H);   // endpoints = exact top-layer centres
+    const dx=pB.x-pA.x, dy=pB.y-pA.y, len=Math.hypot(dx,dy)||1;
+    let px=-dy/len, py=dx/len; if(py>0){px=-px;py=-py;}                 // unit perpendicular, pointing up
+    const N=Math.max(6, Math.round((len+H)/Math.max(4,arcCfg.gap)));
     const pts=[];
-    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, CUBE_H+4*H*t*(1-t))); }
-    pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(...pts.map(p=>p.z))});
+    for(let i=0;i<=N;i++){ const t=i/N, b=4*t*(1-t)*H; pts.push({x:pA.x+dx*t+px*b, y:pA.y+dy*t+py*b, z:0}); }
+    pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(pA.z,pB.z)+500});   // draw on top
   }
   for(let i=0;i<9;i++){
     const r=(i/3|0), c=i%3;
