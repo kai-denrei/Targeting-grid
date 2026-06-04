@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=50eae2f6" />
+<link rel="manifest" href="manifest.webmanifest?v=b66e236f" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=50eae2f6" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=50eae2f6" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=b66e236f" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=b66e236f" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=50eae2f6" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=b66e236f" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -175,6 +175,10 @@
   .fxLayer{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .losLine{position:absolute;transform-origin:0 50%;border-radius:2px}
   .arcDot{position:absolute;border-radius:50%}
+  /* AoE overlays */
+  .aoeTile{position:absolute;inset:7%;border-radius:5px}
+  .aoeNum{position:absolute;left:50%;top:50%;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:17px;line-height:1;white-space:nowrap}
+  .aoeBlast{position:absolute;border-radius:50%}
   /* markers toolbar */
   .toolbar{display:flex;gap:6px}
   .toolbtn{flex:1;min-width:0;background:#0a1513;border:1px solid var(--line);border-radius:7px;color:var(--muted);
@@ -324,7 +328,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="50eae2f6">
+  <meta name="cb" content="b66e236f">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -423,6 +427,7 @@
           <button class="toolbtn" data-tool="cross" title="Crosshair">✛</button>
           <button class="toolbtn" data-tool="los" title="Sightline (click two cells)">⋯</button>
           <button class="toolbtn" data-tool="arc" title="Ballistic line (click two cells)">⌒</button>
+          <button class="toolbtn" data-tool="aoe" title="Area of effect (click a centre cell)">✸</button>
         </div>
         <p class="hint" style="margin-top:10px" id="toolHint">Pick a tool, then click cells to place markers (independent of targeting).</p>
         <div id="toolCfg"></div>
@@ -510,7 +515,8 @@ const state = {
   losPending:null,              // first endpoint while placing a sightline
   arc:[],                       // ballistic (arced) segments {a,b}
   arcPending:null,              // first endpoint while placing a ballistic line
-  segEdit:null                  // {tool,idx} when re-picking an existing segment's endpoints
+  segEdit:null,                 // {tool,idx} when re-picking an existing segment's endpoints
+  aoe:new Set()                 // AoE centre cells, keyed 'grid:i' (falloff radiates by distance)
 };
 
 // Stance-orb ("must be here to shoot") appearance — tunable via the −/+ steppers.
@@ -553,6 +559,26 @@ const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,6
 // Endpoints sit at the elevated platform centre (cube-top, z=MARK_BASE) so the
 // arc lands dead-centre on the raised square; only the mid-flight apex is higher.
 const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, color:'64,166,255' };
+// Area-of-Effect: a centre cell radiates a damage penalty by Manhattan distance
+// (centre 0, ring1 −1, ring2 −2 …). style 1=filled tiles, 2=outlined, 3=radial blast.
+const aoeCfg   = { style:1, radius:2, falloff:1, glow:1.0 };
+const AOE_RAMP = [[255,90,61],[255,178,74],[120,210,165]];   // hot centre -> cool edge
+function aoeColor(d){
+  const t=Math.min(1, d/Math.max(1,aoeCfg.radius)), seg=t*2, i=Math.min(1,Math.floor(seg)), f=seg-i;
+  const a=AOE_RAMP[i], b=AOE_RAMP[i+1]||a;
+  return a.map((v,k)=>Math.round(v+(b[k]-v)*f)).join(',');
+}
+// nearest AoE centre (same grid) within radius -> {dist, mod} or null
+function aoeAt(grid, i){
+  if(!state.aoe.size) return null;
+  const r=i/3|0, c=i%3; let best=null;
+  for(const key of state.aoe){
+    const [g,ci]=key.split(':'); if(g!==grid) continue;
+    const j=+ci, d=Math.abs(r-(j/3|0))+Math.abs(c-(j%3));
+    if(d<=aoeCfg.radius && (best===null||d<best)) best=d;
+  }
+  return best===null?null:{dist:best, mod:-aoeCfg.falloff*best};
+}
 const MARK_BASE = ()=> (LAYERS-1)*STEP;   // cube-top height; flat markers sit just above it
 
 /* ---------- cell construction ---------- */
@@ -632,7 +658,7 @@ function renderCube(cell, grid, active){
 }
 
 /* ---------- interaction ---------- */
-const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross'};
+const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross',aoe:'aoe'};
 function onCellClick(grid,i){
   const key=grid+':'+i;
   if(state.tool){
@@ -696,6 +722,31 @@ function renderCellFx(cell, grid, activeSet){
   if(state.cross.has(key)) renderCross(cell);
   if(state.losPending===key) renderPending(cell, losCfg.color);
   if(state.arcPending===key) renderPending(cell, arcCfg.color);
+  const aoe=aoeAt(grid, +cell.dataset.i); if(aoe) renderAoE(cell, aoe);
+}
+// AoE per-cell overlay: a falloff tile/outline (styles 1,2) + the modifier number.
+function renderAoE(cell, a){
+  const col=aoeColor(a.dist), GI=aoeCfg.glow, near=1-a.dist/Math.max(1,aoeCfg.radius);
+  if(aoeCfg.style!==3){
+    const tile=document.createElement('div'); tile.className='mk aoeTile';
+    tile.style.transform=`translateZ(${MARK_BASE()+1}px)`;
+    if(aoeCfg.style===1){                                  // filled heat tile
+      tile.style.background=`rgba(${col},${(0.16+0.22*near)*GI})`;
+      tile.style.boxShadow=`inset 0 0 12px rgba(${col},${0.4*GI})`;
+      tile.style.border=`1px solid rgba(${col},${0.55*GI})`;
+    }else{                                                 // outlined tile
+      tile.style.border=`2px solid rgba(${col},${Math.min(1,0.85*GI)})`;
+      tile.style.boxShadow=`0 0 ${(8*GI)|0}px rgba(${col},${0.5*GI}), inset 0 0 ${(8*GI)|0}px rgba(${col},${0.3*GI})`;
+    }
+    cell.appendChild(tile);
+  }
+  // modifier number (billboarded to face the camera so it stays readable)
+  const num=document.createElement('div'); num.className='mk aoeNum';
+  num.textContent = a.dist===0 ? '0' : ('−'+(aoeCfg.falloff*a.dist));
+  num.style.color=`rgb(${col})`;
+  num.style.textShadow=`0 0 7px rgba(${col},.9), 0 1px 2px rgba(0,0,0,.6)`;
+  num.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+13}px) rotateX(-58deg)`;
+  cell.appendChild(num);
 }
 // flat arrow (chevron) lying on the cell surface, pointing left/right in board space
 function renderArrow(cell, dir){
@@ -805,6 +856,19 @@ function renderOverlay(){
       layer.appendChild(d);
     }
   }
+  // AoE style 3 — a flat radial "blast" centred on each AoE cell, fading across the radius
+  if(aoeCfg.style===3){
+    const span=69;   // on-screen cell pitch (64px cell + 5px gap)
+    for(const key of state.aoe){
+      const [g,ci]=key.split(':'); const C=cellBoardCenter(g,+ci); if(!C) continue;
+      const R=(aoeCfg.radius+0.5)*span, c0=aoeColor(0), c1=aoeColor(aoeCfg.radius);
+      const b=document.createElement('div'); b.className='aoeBlast';
+      b.style.left=C.x+'px'; b.style.top=C.y+'px'; b.style.width=(2*R)+'px'; b.style.height=(2*R)+'px';
+      b.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+2}px)`;
+      b.style.background=`radial-gradient(circle at 50% 50%, rgba(${c0},${0.5*aoeCfg.glow}) 0%, rgba(${c1},${0.22*aoeCfg.glow}) 45%, rgba(${c1},0) 72%)`;
+      layer.appendChild(b);
+    }
+  }
 }
 // Hovering inverted pyramid (apex down) — white & glowing. Built as a shrinking
 // stack of squares to match the voxel/hologram look of the cubes; CSS perspective
@@ -885,7 +949,8 @@ function renderOutputs(){
       arrowsRight:keysToCells(state.arrowR),
       crosshairs: keysToCells(state.cross),
       sightlines: state.los.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)})),
-      ballistics: state.arc.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)}))
+      ballistics: state.arc.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)})),
+      aoe: keysToCells(state.aoe).map(c=>({...c, radius:aoeCfg.radius, falloff:aoeCfg.falloff}))
     }
   };
   $('#json').textContent=JSON.stringify(obj,null,2);
@@ -990,6 +1055,22 @@ function buildExportCanvas(){
   for(const key of state.cross){ const {cx,cy}=keyCxCy(key); addCross(cx,cy); }
   for(const s of state.los){ addLos(s); }
   for(const s of state.arc){ addArc(s); }
+  // AoE: per-cell falloff tile + number, and (style 3) a radial blast per centre
+  function addAoECell(cx,cy,a){
+    const corners=[project(cx-hw,cy-hw,CUBE_H+1),project(cx+hw,cy-hw,CUBE_H+1),project(cx+hw,cy+hw,CUBE_H+1),project(cx-hw,cy+hw,CUBE_H+1)];
+    const ctr=project(cx,cy,CUBE_H+13); [...corners,ctr].forEach(ext);
+    items.push({type:'aoecell',corners,ctr,dist:a.dist,z:Math.max(...corners.map(p=>p.z))});
+  }
+  function addAoEBlast(cx,cy){
+    const ctr=project(cx,cy,CUBE_H+2), edge=project(cx+(aoeCfg.radius+0.5)*SP,cy,CUBE_H+2);
+    const R=Math.hypot(edge.x-ctr.x,edge.y-ctr.y);
+    ext({x:ctr.x-R,y:ctr.y-R}); ext({x:ctr.x+R,y:ctr.y+R}); items.push({type:'aoeblast',ctr,R,z:ctr.z-5});
+  }
+  for(const grid of ['far','near']) for(let i=0;i<9;i++){
+    const a=aoeAt(grid,i); if(!a) continue;
+    const r=i/3|0,c=i%3; addAoECell(cellCX(c),(grid==='far'?FAR_CY:NEAR_CY)+(r-1)*SP,a);
+  }
+  if(aoeCfg.style===3) for(const key of state.aoe){ const {cx,cy}=keyCxCy(key); addAoEBlast(cx,cy); }
 
   // canvas sizing (transparent, high-res) -----------------------------------
   const M=70, scale=1300/Math.max(1,(maxX-minX));
@@ -1100,6 +1181,26 @@ function buildExportCanvas(){
       g.fillStyle=`rgb(${C.color})`;
       for(const p of it.pts){ const q=PX(p); g.beginPath(); g.arc(q.x,q.y,rad,0,Math.PI*2); g.fill(); }
       g.restore();
+    } else if(it.type==='aoeblast'){        // AoE style 3 radial blast
+      const c=PX(it.ctr), Rpx=it.R*scale, c0=aoeColor(0), c1=aoeColor(aoeCfg.radius), GI=aoeCfg.glow;
+      const grad=g.createRadialGradient(c.x,c.y,0,c.x,c.y,Rpx);
+      grad.addColorStop(0,`rgba(${c0},${0.5*GI})`); grad.addColorStop(0.45,`rgba(${c1},${0.22*GI})`); grad.addColorStop(0.72,`rgba(${c1},0)`);
+      g.fillStyle=grad; g.beginPath(); g.arc(c.x,c.y,Rpx,0,Math.PI*2); g.fill();
+    } else if(it.type==='aoecell'){         // AoE falloff tile + modifier number
+      const col=aoeColor(it.dist), GI=aoeCfg.glow, near=1-it.dist/Math.max(1,aoeCfg.radius), P=it.corners.map(PX);
+      if(aoeCfg.style===1){
+        g.beginPath(); P.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+        g.fillStyle=`rgba(${col},${(0.16+0.22*near)*GI})`; g.fill();
+        g.lineWidth=Math.max(1,scale*0.14); g.strokeStyle=`rgba(${col},${0.55*GI})`; g.stroke();
+      } else if(aoeCfg.style===2){
+        g.save(); g.shadowColor=`rgba(${col},${0.5*GI})`; g.shadowBlur=8*GI*scale*0.4;
+        g.beginPath(); P.forEach((p,k)=>k?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+        g.lineWidth=Math.max(1.5,scale*0.3); g.strokeStyle=`rgba(${col},${Math.min(1,0.85*GI)})`; g.stroke(); g.restore();
+      }
+      const ctr=PX(it.ctr), fs=Math.max(11, scale*3.0);
+      g.save(); g.shadowColor=`rgba(${col},.9)`; g.shadowBlur=6*scale*0.4;
+      g.fillStyle=`rgb(${col})`; g.font=`700 ${fs}px "JetBrains Mono",monospace`; g.textAlign='center'; g.textBaseline='middle';
+      g.fillText(it.dist===0?'0':('−'+(aoeCfg.falloff*it.dist)), ctr.x, ctr.y); g.restore();
     }
   }
 
@@ -1199,7 +1300,7 @@ $('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
 /* ---------- markers palette ---------- */
-function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null;state.segEdit=null; }
+function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null;state.segEdit=null;state.aoe.clear(); }
 const CFGS={
   pyramid:{obj:pyrCfg, steps:{
     width :{s:2,  min:8,   max:60, label:'Width', fmt:v=>v+'px'},
@@ -1230,6 +1331,12 @@ const CFGS={
     gap   :{s:1,  min:4, max:30, label:'Dot gap',   fmt:v=>v+'px'},
     weight:{s:0.4,min:1, max:8,  label:'Dot size',  fmt:v=>v.toFixed(1)},
     glow  :{s:0.1,min:0, max:2.5,label:'Glow',      fmt:v=>v.toFixed(1)}
+  }},
+  aoe:{obj:aoeCfg, steps:{
+    style  :{s:1,  min:1, max:3, label:'Style',   fmt:v=>['','Filled','Outline','Blast'][v]},
+    radius :{s:1,  min:1, max:4, label:'Radius',  fmt:v=>v+''},
+    falloff:{s:1,  min:1, max:4, label:'Falloff', fmt:v=>'−'+v+'/ring'},
+    glow   :{s:0.1,min:0, max:2.5,label:'Glow',   fmt:v=>v.toFixed(1)}
   }}
 };
 const TOOL_HINTS={
@@ -1238,7 +1345,8 @@ const TOOL_HINTS={
   arrowR :'Click cells to place <b>right arrows</b> (click again to remove).',
   cross  :'Click cells to place <b>crosshairs</b> (click again to remove).',
   los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Add / edit / delete instances in the list below.',
-  arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Add / edit / delete instances in the list below.'
+  arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Add / edit / delete instances in the list below.',
+  aoe    :'Click a cell to set an <b>area-of-effect</b> centre (click again to remove). Falloff radiates out: centre 0, then −1, −2… Try the <b>Style</b> options.'
 };
 const cfgKeyForTool=t=>(t==='arrowL'||t==='arrowR')?'arrow':t;
 function buildCfgUI(){
