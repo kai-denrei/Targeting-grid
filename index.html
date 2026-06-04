@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=9e4751f9" />
+<link rel="manifest" href="manifest.webmanifest?v=3e5170ec" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=9e4751f9" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=9e4751f9" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=3e5170ec" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=3e5170ec" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=9e4751f9" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=3e5170ec" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -164,14 +164,12 @@
   .losLine{position:absolute;transform-origin:0 50%;border-radius:2px}
   .arcDot{position:absolute;border-radius:50%}
   /* 2D screen-space overlay for the ballistic arc (no perspective → never overshoots) */
-  .fx2d{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
-  .arcDot2{position:absolute;border-radius:50%;transform:translate(-50%,-50%)}
   /* AoE overlays */
   .aoeTile{position:absolute;inset:7%;border-radius:5px}
   .aoeNum{position:absolute;left:50%;top:50%;font-family:"JetBrains Mono",monospace;font-weight:700;font-size:17px;line-height:1;white-space:nowrap}
   .aoeBlast{position:absolute;border-radius:50%}
   /* markers toolbar */
-  .toolbar{display:flex;gap:6px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:6px}
   .toolbtn{flex:1;min-width:0;background:#0a1513;border:1px solid var(--line);border-radius:7px;color:var(--muted);
     font-family:inherit;font-size:16px;line-height:1;padding:9px 0;cursor:pointer;transition:.16s}
   .toolbtn:hover{color:var(--cream);border-color:#3a5a52}
@@ -331,7 +329,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="9e4751f9">
+  <meta name="cb" content="3e5170ec">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -385,7 +383,6 @@
           <div class="fxLayer" id="fxLayer"></div>
         </div>
       </div>
-      <div class="fx2d" id="fx2d"></div>
     </div>
 
     <!-- CONTROL PANEL -->
@@ -437,6 +434,8 @@
           <button class="toolbtn" data-tool="pyramid" title="Pyramid beacon">◇</button>
           <button class="toolbtn" data-tool="arrowL" title="Left arrow">←</button>
           <button class="toolbtn" data-tool="arrowR" title="Right arrow">→</button>
+          <button class="toolbtn" data-tool="arrowU" title="Up arrow">↑</button>
+          <button class="toolbtn" data-tool="arrowD" title="Down arrow">↓</button>
           <button class="toolbtn" data-tool="cross" title="Crosshair">✛</button>
           <button class="toolbtn" data-tool="los" title="Sightline (click two cells)">⋯</button>
           <button class="toolbtn" data-tool="arc" title="Ballistic line (click two cells)">⌒</button>
@@ -523,6 +522,8 @@ const state = {
   pyr:new Set(),                // pyramid beacons, keyed 'far:i' / 'near:i'
   arrowL:new Set(),             // left arrows
   arrowR:new Set(),             // right arrows
+  arrowU:new Set(),             // up arrows (toward far)
+  arrowD:new Set(),             // down arrows (toward near)
   cross:new Set(),              // crosshairs
   los:[],                       // sightline segments {a:'grid:i', b:'grid:i'}
   losPending:null,              // first endpoint while placing a sightline
@@ -574,6 +575,7 @@ const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:28, color:'255,90,6
 // Endpoints sit at the elevated platform centre (cube-top, z=MARK_BASE) so the
 // arc lands dead-centre on the raised square; only the mid-flight apex is higher.
 const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, color:'64,166,255' };
+const ARC_SKEW = 0.7;   // <1 biases the lob apex toward the launch → clean descent onto the target
 // Area-of-Effect: a centre cell radiates a damage penalty by Manhattan distance
 // (centre 0, ring1 −1, ring2 −2 …). style 1=filled tiles, 2=outlined, 3=radial blast.
 const aoeCfg   = { style:1, radius:2, falloff:1, glow:1.0 };
@@ -673,7 +675,7 @@ function renderCube(cell, grid, active){
 }
 
 /* ---------- interaction ---------- */
-const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross',aoe:'aoe'};
+const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',arrowU:'arrowU',arrowD:'arrowD',cross:'cross',aoe:'aoe'};
 function onCellClick(grid,i){
   const key=grid+':'+i;
   if(state.tool){
@@ -725,6 +727,8 @@ function renderCellFx(cell, grid, activeSet){
   if(state.pyr.has(key)) renderPyramid(cell);
   if(state.arrowL.has(key)) renderArrow(cell,'L');
   if(state.arrowR.has(key)) renderArrow(cell,'R');
+  if(state.arrowU.has(key)) renderArrow(cell,'U');
+  if(state.arrowD.has(key)) renderArrow(cell,'D');
   if(state.cross.has(key)) renderCross(cell);
   if(state.losPending===key) renderPending(cell, losCfg.color);
   if(state.arcPending===key) renderPending(cell, arcCfg.color);
@@ -763,7 +767,8 @@ function renderArrow(cell, dir){
   el.style.clipPath=`polygon(0% ${sT}%, 55% ${sT}%, 55% 14%, 100% 50%, 55% 86%, 55% ${sB}%, 0% ${sB}%)`;
   el.style.background=`rgb(${C.color})`;
   el.style.filter=`drop-shadow(0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.85*C.glow).toFixed(2)}))`;
-  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+C.lift}px)`+(dir==='L'?' scaleX(-1)':'');
+  const rot = dir==='L'?' scaleX(-1)' : dir==='U'?' rotateZ(-90deg)' : dir==='D'?' rotateZ(90deg)' : '';
+  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+C.lift}px)`+rot;
   cell.appendChild(el);
 }
 // flat crosshair reticle on the cell surface
@@ -798,15 +803,6 @@ function cellBoardCenter(grid,i){
   const board=$('#board'); let x=cell.offsetWidth/2, y=cell.offsetHeight/2, n=cell;
   while(n && n!==board){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
   return {x,y};
-}
-// screen-space centre of a cell's TOP face (via its hit-pad, which sits at the
-// top layer), relative to a given origin rect. Used by the 2D ballistic overlay.
-function cellTopScreen(key, originRect){
-  const [g,i]=key.split(':');
-  const hp=document.querySelector(`#grid${g==='far'?'Far':'Near'} .cell[data-i="${i}"] .hitpad`);
-  if(!hp) return null;
-  const r=hp.getBoundingClientRect();
-  return {x:r.left+r.width/2-originRect.left, y:r.top+r.height/2-originRect.top};
 }
 // per-instance manager for sightlines / ballistic arcs (+ add, edit, delete)
 function fmtKey(k){ const [g,i]=k.split(':'); return (g==='far'?'F':'N')+i; }
@@ -858,26 +854,20 @@ function renderOverlay(){
     ln.style.boxShadow=`0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.75*C.glow).toFixed(2)})`;
     layer.appendChild(ln);
   }
-  // ballistic arcs — drawn in a 2D screen-space overlay as a parabola between the
-  // two top-face centres. Because it's screen-space, it always stays between the
-  // endpoints and lands exactly on the target, at ANY arc height (no overshoot).
-  const f2=$('#fx2d');
-  if(f2){
-    f2.innerHTML='';
-    const Ac=arcCfg, acol=`rgb(${Ac.color})`, glow=`0 0 ${(5*Ac.glow).toFixed(1)}px rgba(${Ac.color},${Math.min(1,0.9*Ac.glow).toFixed(2)})`;
-    const orig=f2.getBoundingClientRect();
-    for(const s of state.arc){
-      const A=cellTopScreen(s.a,orig), B=cellTopScreen(s.b,orig); if(!A||!B) continue;
-      const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
-      let px=-dy/len, py=dx/len; if(py>0){px=-px;py=-py;}            // unit perpendicular, pointing up
-      const N=Math.max(6, Math.round((len+Ac.height)/Math.max(4,Ac.gap)));
-      for(let i=0;i<=N;i++){
-        const t=i/N, b=4*t*(1-t)*Ac.height, x=A.x+dx*t+px*b, y=A.y+dy*t+py*b;
-        const d=document.createElement('div'); d.className='arcDot2';
-        d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
-        d.style.background=acol; d.style.boxShadow=glow;
-        f2.appendChild(d);
-      }
+  // ballistic arcs — a true lob through the AIR: height via translateZ on the board.
+  // Asymmetric (apex toward the launch, ARC_SKEW) so it descends cleanly onto the
+  // target; both endpoints sit at the top-layer centre (t=0,1 -> z=MARK_BASE).
+  const Ac=arcCfg, acol=`rgb(${Ac.color})`, glow=`0 0 ${(5*Ac.glow).toFixed(1)}px rgba(${Ac.color},${Math.min(1,0.9*Ac.glow).toFixed(2)})`;
+  for(const s of state.arc){
+    const [A,B]=ends(s); if(!A||!B) continue;
+    const chord=Math.hypot(B.x-A.x,B.y-A.y), N=Math.max(6, Math.round((chord+Ac.height)/Math.max(4,Ac.gap)));
+    for(let i=0;i<=N;i++){
+      const t=i/N, sk=Math.pow(t,ARC_SKEW), x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=MARK_BASE()+4*Ac.height*sk*(1-sk);
+      const d=document.createElement('div'); d.className='arcDot';
+      d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
+      d.style.transform=`translate(-50%,-50%) translateZ(${z}px)`;
+      d.style.background=acol; d.style.boxShadow=glow;
+      layer.appendChild(d);
     }
   }
   // AoE style 3 — a flat radial "blast" centred on each AoE cell, fading across the radius
@@ -971,6 +961,8 @@ function renderOutputs(){
       pyramids  : keysToCells(state.pyr),
       arrowsLeft: keysToCells(state.arrowL),
       arrowsRight:keysToCells(state.arrowR),
+      arrowsUp:   keysToCells(state.arrowU),
+      arrowsDown: keysToCells(state.arrowD),
       crosshairs: keysToCells(state.cross),
       sightlines: state.los.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)})),
       ballistics: state.arc.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)})),
@@ -1044,10 +1036,15 @@ function buildExportCanvas(){
     items.push({type:'pyr',apex,corners,z:Math.max(apex.z,...corners.map(p=>p.z))});
   }
   const keyCxCy=key=>{ const [g,ii]=key.split(':'); const i=+ii; return {cx:cellCX(i%3), cy:(g==='far'?FAR_CY:NEAR_CY)+((i/3|0)-1)*SP}; };
-  function addArrow(cx,cy,dir){                            // flat chevron at marker height
+  function addArrow(cx,cy,dir){                            // flat chevron at marker height (L/R/U/D)
     const S=CELL*arrowCfg.size, h=CUBE_H+arrowCfg.lift, w=arrowCfg.weight, sT=0.5-w*0.5, sB=0.5+w*0.5;
     const fr=[[0,sT],[0.55,sT],[0.55,0.14],[1,0.5],[0.55,0.86],[0.55,sB],[0,sB]];
-    const pts=fr.map(([fx,fy])=>{ let dx=(fx-0.5)*S; if(dir==='L') dx=-dx; return project(cx+dx, cy+(fy-0.5)*S, h); });
+    const pts=fr.map(([fx,fy])=>{
+      const along=(fx-0.5)*S, cross=(fy-0.5)*S; let ox,oy;
+      if(dir==='R'){ ox=along; oy=cross; } else if(dir==='L'){ ox=-along; oy=cross; }
+      else if(dir==='U'){ ox=cross; oy=-along; } else { ox=cross; oy=along; }   // U toward far(-y), D toward near(+y)
+      return project(cx+ox, cy+oy, h);
+    });
     pts.forEach(ext); items.push({type:'arrow',pts,z:pts.reduce((s,p)=>s+p.z,0)/pts.length});
   }
   function addCross(cx,cy){                                // flat reticle
@@ -1061,15 +1058,12 @@ function buildExportCanvas(){
     const p1=project(A.cx,A.cy,losCfg.lift), p2=project(B.cx,B.cy,losCfg.lift);
     [p1,p2].forEach(ext); items.push({type:'los',p1,p2,z:(p1.z+p2.z)/2});
   }
-  function addArc(s){                                      // ballistic: screen-space parabola between top-face centres
+  function addArc(s){                                      // ballistic: true lob through the air (height in z)
     const A=keyCxCy(s.a), B=keyCxCy(s.b), H=arcCfg.height;
-    const pA=project(A.cx,A.cy,CUBE_H), pB=project(B.cx,B.cy,CUBE_H);   // endpoints = exact top-layer centres
-    const dx=pB.x-pA.x, dy=pB.y-pA.y, len=Math.hypot(dx,dy)||1;
-    let px=-dy/len, py=dx/len; if(py>0){px=-px;py=-py;}                 // unit perpendicular, pointing up
-    const N=Math.max(6, Math.round((len+H)/Math.max(4,arcCfg.gap)));
+    const chord=Math.hypot(B.cx-A.cx,B.cy-A.cy), N=Math.max(6, Math.round((chord+H)/Math.max(4,arcCfg.gap)));
     const pts=[];
-    for(let i=0;i<=N;i++){ const t=i/N, b=4*t*(1-t)*H; pts.push({x:pA.x+dx*t+px*b, y:pA.y+dy*t+py*b, z:0}); }
-    pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(pA.z,pB.z)+500});   // draw on top
+    for(let i=0;i<=N;i++){ const t=i/N, sk=Math.pow(t,ARC_SKEW); pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, CUBE_H+4*H*sk*(1-sk))); }
+    pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(...pts.map(p=>p.z))});
   }
   for(let i=0;i<9;i++){
     const r=(i/3|0), c=i%3;
@@ -1079,6 +1073,8 @@ function buildExportCanvas(){
   for(const key of state.pyr){ const {cx,cy}=keyCxCy(key); addPyramid(cx,cy); }
   for(const key of state.arrowL){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'L'); }
   for(const key of state.arrowR){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'R'); }
+  for(const key of state.arrowU){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'U'); }
+  for(const key of state.arrowD){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'D'); }
   for(const key of state.cross){ const {cx,cy}=keyCxCy(key); addCross(cx,cy); }
   for(const s of state.los){ addLos(s); }
   for(const s of state.arc){ addArc(s); }
@@ -1277,7 +1273,7 @@ $('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
 /* ---------- markers palette ---------- */
-function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null;state.segEdit=null;state.aoe.clear(); }
+function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.arrowU.clear();state.arrowD.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null;state.segEdit=null;state.aoe.clear(); }
 const CFGS={
   pyramid:{obj:pyrCfg, steps:{
     width :{s:2,  min:8,   max:60, label:'Width', fmt:v=>v+'px'},
@@ -1320,12 +1316,14 @@ const TOOL_HINTS={
   pyramid:'Click cells to drop / remove <b>pyramid beacons</b>.',
   arrowL :'Click cells to place <b>left arrows</b> (click again to remove).',
   arrowR :'Click cells to place <b>right arrows</b> (click again to remove).',
+  arrowU :'Click cells to place <b>up arrows</b> (click again to remove).',
+  arrowD :'Click cells to place <b>down arrows</b> (click again to remove).',
   cross  :'Click cells to place <b>crosshairs</b> (click again to remove).',
   los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Add / edit / delete instances in the list below.',
   arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Add / edit / delete instances in the list below.',
   aoe    :'Click a cell to set an <b>area-of-effect</b> centre (click again to remove). Falloff radiates out: centre 0, then −1, −2… Try the <b>Style</b> options.'
 };
-const cfgKeyForTool=t=>(t==='arrowL'||t==='arrowR')?'arrow':t;
+const cfgKeyForTool=t=>t&&t.startsWith('arrow')?'arrow':t;
 function buildCfgUI(){
   const host=$('#toolCfg'); host.innerHTML='';
   for(const name in CFGS){
@@ -1420,14 +1418,14 @@ function snapshotPattern(){
   return {
     name:state.name||'Untitled', dmg:state.dmg, attach:state.attach,
     far:[...state.far], near:[...state.near],
-    pyr:[...state.pyr], arrowL:[...state.arrowL], arrowR:[...state.arrowR], cross:[...state.cross],
+    pyr:[...state.pyr], arrowL:[...state.arrowL], arrowR:[...state.arrowR], arrowU:[...state.arrowU], arrowD:[...state.arrowD], cross:[...state.cross],
     los:state.los.map(s=>({...s})), arc:state.arc.map(s=>({...s})), aoe:[...state.aoe]
   };
 }
 function applyPattern(p){
   state.name=p.name||'Untitled'; state.dmg=(p.dmg??'4')+''; state.attach=(p.attach??'1')+'';
   state.far=new Set(p.far||[]); state.near=new Set(p.near||[]);
-  state.pyr=new Set(p.pyr||[]); state.arrowL=new Set(p.arrowL||[]); state.arrowR=new Set(p.arrowR||[]); state.cross=new Set(p.cross||[]);
+  state.pyr=new Set(p.pyr||[]); state.arrowL=new Set(p.arrowL||[]); state.arrowR=new Set(p.arrowR||[]); state.arrowU=new Set(p.arrowU||[]); state.arrowD=new Set(p.arrowD||[]); state.cross=new Set(p.cross||[]);
   state.los=(p.los||[]).map(s=>({...s})); state.arc=(p.arc||[]).map(s=>({...s})); state.aoe=new Set(p.aoe||[]);
   state.losPending=state.arcPending=state.segEdit=null;
   $('#pname').value=state.name; $('#pdmg').value=state.dmg; $('#pattach').value=state.attach;
@@ -1475,6 +1473,8 @@ function patternPreviewSVG(p){
     if(inarr(p.pyr,g,i)) el+=`<polygon points="${mx-3.4},${my-3} ${mx+3.4},${my-3} ${mx},${my+3.6}" fill="#eef2ff"/>`;
     if(inarr(p.arrowR,g,i)) el+=`<polygon points="${mx-3},${my-1.6} ${mx+1},${my-1.6} ${mx+1},${my-3.6} ${mx+4},${my} ${mx+1},${my+3.6} ${mx+1},${my+1.6} ${mx-3},${my+1.6}" fill="rgb(240,179,74)"/>`;
     if(inarr(p.arrowL,g,i)) el+=`<polygon points="${mx+3},${my-1.6} ${mx-1},${my-1.6} ${mx-1},${my-3.6} ${mx-4},${my} ${mx-1},${my+3.6} ${mx-1},${my+1.6} ${mx+3},${my+1.6}" fill="rgb(240,179,74)"/>`;
+    if(inarr(p.arrowU,g,i)) el+=`<polygon points="${mx-1.6},${my+3} ${mx-1.6},${my-1} ${mx-3.6},${my-1} ${mx},${my-4} ${mx+3.6},${my-1} ${mx+1.6},${my-1} ${mx+1.6},${my+3}" fill="rgb(240,179,74)"/>`;
+    if(inarr(p.arrowD,g,i)) el+=`<polygon points="${mx-1.6},${my-3} ${mx-1.6},${my+1} ${mx-3.6},${my+1} ${mx},${my+4} ${mx+3.6},${my+1} ${mx+1.6},${my+1} ${mx+1.6},${my-3}" fill="rgb(240,179,74)"/>`;
     if(inarr(p.cross,g,i)) el+=`<g stroke="rgb(255,90,69)" stroke-width="1"><line x1="${mx-4}" y1="${my}" x2="${mx+4}" y2="${my}"/><line x1="${mx}" y1="${my-4}" x2="${mx}" y2="${my+4}"/><circle cx="${mx}" cy="${my}" r="1.8" fill="none"/></g>`;
   }
   // sightlines (straight) + ballistic (curved), over the grids

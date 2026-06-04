@@ -7,7 +7,7 @@
    Update UX: never skipWaiting automatically — the page asks the user, then
    posts {type:'SKIP_WAITING'} to activate the new version.                       */
 
-const VERSION   = 'cb-9e4751f9';
+const VERSION   = 'cb-3e5170ec';
 const PRECACHE  = `precache-${VERSION}`;
 const RUNTIME   = `runtime-${VERSION}`;
 const FONT_CACHE = 'google-fonts-v1';
