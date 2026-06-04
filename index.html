@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=07f52822" />
+<link rel="manifest" href="manifest.webmanifest?v=9e4751f9" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=07f52822" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=07f52822" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=9e4751f9" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=9e4751f9" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=07f52822" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=9e4751f9" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -331,7 +331,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="07f52822">
+  <meta name="cb" content="9e4751f9">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -348,6 +348,7 @@
       </div>
       <div class="lib-grid" id="libGrid"></div>
       <p class="hint" id="libEmpty" hidden style="text-align:center;padding:30px">No saved patterns yet. Build one, then <b>💾 Save</b>.</p>
+      <p class="hint" id="libStatus" style="padding:0 18px 14px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em"></p>
     </div>
   </div>
 <div class="wrap">
@@ -1388,6 +1389,33 @@ $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#j
 const PKEY='tg_patterns_v1';
 const loadPatterns=()=>{ try{return JSON.parse(localStorage.getItem(PKEY))||[];}catch(e){return [];} };
 const savePatternsArr=arr=>localStorage.setItem(PKEY, JSON.stringify(arr));
+// localStorage is a fast cache; when the local dev save-server is running, the
+// patterns/ folder on disk is the durable source of truth (and syncs to GitHub).
+let patServer=false;
+async function serverWrite(p){ if(!patServer) return; try{ await fetch('./api/patterns/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}); }catch(e){} }
+async function serverDelete(name){ if(!patServer) return; try{ await fetch('./api/patterns/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}); }catch(e){} }
+async function syncFromServer(){
+  try{
+    const r=await fetch('./api/patterns',{cache:'no-store'});
+    if(!r.ok || !(r.headers.get('content-type')||'').includes('json')) { updatePatStatus(); return; }
+    const files=await r.json(); if(!Array.isArray(files)){ updatePatStatus(); return; }
+    patServer=true;
+    const arr=loadPatterns();                         // folder is source of truth: merge files in (they win)
+    for(const p of files){ if(!p||!p.name) continue;
+      if(!p.id) p.id='p'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
+      const i=arr.findIndex(x=>(x.name||'').toLowerCase()===(p.name||'').toLowerCase());
+      if(i>=0) arr[i]=p; else arr.push(p);
+    }
+    savePatternsArr(arr); refreshPatternUI();
+  }catch(e){}
+  updatePatStatus();
+}
+function updatePatStatus(){
+  const el=$('#libStatus'); if(!el) return;
+  el.textContent = patServer ? '● Auto-saving to the patterns/ folder (commit to sync to GitHub)'
+                             : '○ Saved in this browser only — use Export to back up';
+  el.style.color = patServer ? 'var(--teal)' : 'var(--muted)';
+}
 function snapshotPattern(){
   return {
     name:state.name||'Untitled', dmg:state.dmg, attach:state.attach,
@@ -1409,11 +1437,11 @@ function savePattern(){
   const arr=loadPatterns(), snap=snapshotPattern(); snap.ts=Date.now();
   const i=arr.findIndex(p=>(p.name||'').toLowerCase()===snap.name.toLowerCase());
   if(i>=0){ snap.id=arr[i].id; arr[i]=snap; } else { snap.id='p'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36); arr.push(snap); }
-  savePatternsArr(arr); refreshPatternUI();
-  flash($('#pSave'),'✓ SAVED');
+  savePatternsArr(arr); serverWrite(snap); refreshPatternUI();
+  flash($('#pSave'), patServer ? '✓ → patterns/' : '✓ SAVED');
 }
 function newPattern(){ applyPattern({name:'Untitled', dmg:'4', attach:'1'}); $('#pname').focus(); $('#pname').select(); }
-function deletePattern(id){ savePatternsArr(loadPatterns().filter(p=>p.id!==id)); refreshPatternUI(); }
+function deletePattern(id){ const p=loadPatterns().find(x=>x.id===id); savePatternsArr(loadPatterns().filter(x=>x.id!==id)); if(p) serverDelete(p.name); refreshPatternUI(); }
 function refreshPatternUI(){
   const arr=loadPatterns().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const sel=$('#pSelect'), cur=sel.value;
@@ -1476,7 +1504,7 @@ function renderLibrary(){
     grid.appendChild(card);
   }
 }
-function openLibrary(){ $('#libOverlay').hidden=false; $('#libSearch').value=''; renderLibrary(); $('#libSearch').focus(); }
+function openLibrary(){ $('#libOverlay').hidden=false; $('#libSearch').value=''; renderLibrary(); updatePatStatus(); $('#libSearch').focus(); }
 function closeLibrary(){ $('#libOverlay').hidden=true; }
 // export all patterns to a .json file (portable backup — keep it / commit it / share it)
 function exportPatterns(){
@@ -1499,6 +1527,7 @@ function importPatterns(file){
       const i=arr.findIndex(x=>(x.name||'').toLowerCase()===(p.name||'').toLowerCase());
       if(!p.id) p.id='p'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
       if(i>=0){ p.id=arr[i].id; arr[i]=p; } else arr.push(p);
+      serverWrite(p);                                   // mirror imports to the patterns/ folder too
     }
     savePatternsArr(arr); refreshPatternUI(); renderLibrary();
     flash($('#libImport'),'✓ '+incoming.length);
@@ -1520,6 +1549,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#libOverlay'
 updateOrbUI();
 updatePngPreview();
 refreshPatternUI();
+syncFromServer();   // pull patterns/ folder (durable store) into the cache if the dev-server is running
 render();
 
 /* ---------- version chip: 3 shape glyphs of the build hash ----------

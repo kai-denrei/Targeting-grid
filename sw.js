@@ -7,7 +7,7 @@
    Update UX: never skipWaiting automatically — the page asks the user, then
    posts {type:'SKIP_WAITING'} to activate the new version.                       */
 
-const VERSION   = 'cb-07f52822';
+const VERSION   = 'cb-9e4751f9';
 const PRECACHE  = `precache-${VERSION}`;
 const RUNTIME   = `runtime-${VERSION}`;
 const FONT_CACHE = 'google-fonts-v1';
@@ -89,6 +89,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;          // never cache unsafe methods
   const url = new URL(request.url);
+
+  // local pattern save-server API — never cache, always hit the network
+  if (url.pathname.includes('/api/')) return;
 
   // HTML navigations
   if (request.mode === 'navigate') {
