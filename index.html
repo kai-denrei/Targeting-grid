@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>斬 — Targeting Pattern Editor</title>
-<meta name="description" content="Design and export 3D targeting / stance patterns for the 斬 card system. Installable, works offline." />
+<title>的 — Targeting Pattern Editor</title>
+<meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest" />
+<link rel="manifest" href="manifest.webmanifest?v=3a2d8f5c" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=3a2d8f5c" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=3a2d8f5c" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=3a2d8f5c" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="斬 Targeting" />
+<meta name="apple-mobile-web-app-title" content="的 Targeting" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet">
@@ -154,6 +154,21 @@
   /* hovering inverted-pyramid beacon */
   .pyrStack{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .pyrLayer{position:absolute;left:50%;top:50%;border-radius:2px}
+  /* build / version badge (top-left) */
+  #verBadge{
+    position:fixed;top:8px;left:8px;z-index:2000;display:flex;align-items:center;gap:9px;
+    background:rgba(8,16,14,.82);border:1px solid var(--line);border-radius:9px;padding:6px 11px;
+    cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:border-color .16s;
+    user-select:none;
+  }
+  #verBadge:hover{border-color:var(--teal-dim)}
+  .vb-bars{display:flex;flex-direction:column;gap:2px}
+  .vb-row{display:flex;gap:2px}
+  .vb-row i{width:4px;height:4px;border-radius:1px;background:rgba(255,255,255,.10)}
+  .vb-txt{display:flex;flex-direction:column;line-height:1.1}
+  .vb-txt b{font-size:12px;font-weight:700;color:var(--cream);letter-spacing:.04em}
+  .vb-txt span{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:var(--muted);letter-spacing:.1em;margin-top:1px}
   /* flat markers (arrow / crosshair / sightline pending) lying on the cell */
   .mk{pointer-events:none}
   .mkArrow{position:absolute;left:50%;top:50%}
@@ -311,12 +326,21 @@
   .pwa-toast button.ghost{background:transparent;border-color:var(--line);color:var(--muted)}
   .pwa-toast button:hover{box-shadow:0 0 12px rgba(63,214,176,.3)}
 </style>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="cb" content="3a2d8f5c">
 </head>
 <body>
+  <!-- build / version badge (token bumped by scripts/bump.sh) -->
+  <div id="verBadge" title="Build version — click to copy">
+    <div class="vb-bars" id="vbBars"></div>
+    <div class="vb-txt"><b>Reiyaa</b><span id="vbHash">--------</span></div>
+  </div>
 <div class="wrap">
 
   <header class="topbar">
-    <div class="glyph">斬</div>
+    <div class="glyph">的</div>
     <div class="titles">
       <h1>Targeting Pattern Editor</h1>
       <p>Near grid → far grid &nbsp;·&nbsp; stance maps to footprint</p>
@@ -445,7 +469,7 @@
       <div class="card">
         <div class="frame"></div>
         <div class="num" id="cnum">8</div>
-        <div class="badge">斬</div>
+        <div class="badge">的</div>
         <div class="dmg" id="cdmg">4</div>
         <div class="txt" id="ctxt"></div>
         <div class="minigrids">
@@ -531,8 +555,8 @@ const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:6, color:'255
 // Sightline (dotted segment between two cells).
 const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,69' };   // red laser
 // Ballistic line — electric-blue dotted parabola between two cells.
-// Endpoints sit at z=0 (the exact cell centre) so the arc lands dead-centre on
-// its squares regardless of perspective; only the mid-flight apex is lifted.
+// Endpoints sit at the elevated platform centre (cube-top, z=MARK_BASE) so the
+// arc lands dead-centre on the raised square; only the mid-flight apex is higher.
 const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, color:'64,166,255' };
 const MARK_BASE = ()=> (LAYERS-1)*STEP;   // cube-top height; flat markers sit just above it
 
@@ -778,7 +802,7 @@ function renderOverlay(){
     const [A,B]=ends(s); if(!A||!B) continue;
     const chord=Math.hypot(B.x-A.x,B.y-A.y), N=Math.max(6, Math.round((chord+Ac.height)/Math.max(4,Ac.gap)));
     for(let i=0;i<=N;i++){
-      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=4*Ac.height*t*(1-t);
+      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=MARK_BASE()+4*Ac.height*t*(1-t);
       const d=document.createElement('div'); d.className='arcDot';
       d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
       d.style.transform=`translate(-50%,-50%) translateZ(${z}px)`;
@@ -957,7 +981,7 @@ function buildExportCanvas(){
     const A=keyCxCy(s.a), B=keyCxCy(s.b), H=arcCfg.height;
     const chord=Math.hypot(B.cx-A.cx,B.cy-A.cy), N=Math.max(6, Math.round((chord+H)/Math.max(4,arcCfg.gap)));
     const pts=[];
-    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, 4*H*t*(1-t))); }
+    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, CUBE_H+4*H*t*(1-t))); }
     pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(...pts.map(p=>p.z))});
   }
   for(let i=0;i<9;i++){
@@ -1286,6 +1310,32 @@ $('#copyJson').addEventListener('click',()=>{navigator.clipboard.writeText($('#j
 updateOrbUI();
 updatePngPreview();
 render();
+
+/* ---------- build / version badge ---------- */
+(function verBadge(){
+  const meta=document.querySelector('meta[name="cb"]');
+  const tok=(meta&&meta.content)||'00000000';
+  const hashEl=$('#vbHash'); if(hashEl) hashEl.textContent=tok;
+  const bars=$('#vbBars');
+  if(bars){
+    const v=parseInt(tok,16)>>>0;                 // 32-bit token -> 3×6 LED grid
+    const rowCols=['#5aa6ff','#3fd6b0','#e0a64a']; // electric blue / teal / amber
+    for(let r=0;r<3;r++){
+      const row=document.createElement('div'); row.className='vb-row';
+      for(let c=0;c<6;c++){
+        const on=(v>>(r*6+c))&1, seg=document.createElement('i');
+        if(on){ seg.style.background=rowCols[r]; seg.style.boxShadow=`0 0 4px ${rowCols[r]}`; }
+        row.appendChild(seg);
+      }
+      bars.appendChild(row);
+    }
+  }
+  const badge=$('#verBadge');
+  if(badge) badge.addEventListener('click',()=>{
+    if(navigator.clipboard) navigator.clipboard.writeText(tok);
+    const h=$('#vbHash'), o=h.textContent; h.textContent='copied'; setTimeout(()=>h.textContent=o,800);
+  });
+})();
 </script>
 
 <!-- PWA: update toast + iOS add-to-home-screen hint -->

@@ -1,7 +1,7 @@
 {
-  "name": "斬 — Targeting Pattern Editor",
-  "short_name": "斬 Targeting",
-  "description": "Design and export 3D targeting / stance patterns for the 斬 card system. Works offline.",
+  "name": "的 — Targeting Pattern Editor",
+  "short_name": "的 Targeting",
+  "description": "Design and export 3D targeting / stance patterns for the 的 card system. Works offline.",
   "id": "./",
   "start_url": "./?src=pwa",
   "scope": "./",

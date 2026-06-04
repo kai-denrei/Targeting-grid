@@ -1,7 +1,7 @@
-# 斬 — Targeting Pattern Editor
+# 的 — Targeting Pattern Editor
 
 An installable, offline-capable **Progressive Web App** for designing and exporting
-3D targeting / stance patterns for the 斬 card system.
+3D targeting / stance patterns for the 的 card system.
 
 **Live:** https://kai-denrei.github.io/Targeting-grid/
 
