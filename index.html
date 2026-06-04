@@ -531,7 +531,9 @@ const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:6, color:'255
 // Sightline (dotted segment between two cells).
 const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,69' };   // red laser
 // Ballistic line — electric-blue dotted parabola between two cells.
-const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, lift:5, color:'64,166,255' };
+// Endpoints sit at z=0 (the exact cell centre) so the arc lands dead-centre on
+// its squares regardless of perspective; only the mid-flight apex is lifted.
+const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, color:'64,166,255' };
 const MARK_BASE = ()=> (LAYERS-1)*STEP;   // cube-top height; flat markers sit just above it
 
 /* ---------- cell construction ---------- */
@@ -776,7 +778,7 @@ function renderOverlay(){
     const [A,B]=ends(s); if(!A||!B) continue;
     const chord=Math.hypot(B.x-A.x,B.y-A.y), N=Math.max(6, Math.round((chord+Ac.height)/Math.max(4,Ac.gap)));
     for(let i=0;i<=N;i++){
-      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=Ac.lift+4*Ac.height*t*(1-t);
+      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=4*Ac.height*t*(1-t);
       const d=document.createElement('div'); d.className='arcDot';
       d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
       d.style.transform=`translate(-50%,-50%) translateZ(${z}px)`;
@@ -955,7 +957,7 @@ function buildExportCanvas(){
     const A=keyCxCy(s.a), B=keyCxCy(s.b), H=arcCfg.height;
     const chord=Math.hypot(B.cx-A.cx,B.cy-A.cy), N=Math.max(6, Math.round((chord+H)/Math.max(4,arcCfg.gap)));
     const pts=[];
-    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, arcCfg.lift+4*H*t*(1-t))); }
+    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, 4*H*t*(1-t))); }
     pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(...pts.map(p=>p.z))});
   }
   for(let i=0;i<9;i++){
