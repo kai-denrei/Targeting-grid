@@ -6,12 +6,12 @@
 <title>的 — Targeting Pattern Editor</title>
 <meta name="description" content="Design and export 3D targeting / stance patterns for the 的 card system. Installable, works offline." />
 <!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest?v=5af82447" />
+<link rel="manifest" href="manifest.webmanifest?v=8318e821" />
 <meta name="theme-color" content="#08100e" />
-<link rel="icon" href="icons/favicon-32.png?v=5af82447" sizes="32x32" type="image/png" />
-<link rel="icon" href="icons/icon-192.png?v=5af82447" sizes="192x192" type="image/png" />
+<link rel="icon" href="icons/favicon-32.png?v=8318e821" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-192.png?v=8318e821" sizes="192x192" type="image/png" />
 <!-- iOS -->
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=5af82447" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png?v=8318e821" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -328,7 +328,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="cb" content="5af82447">
+  <meta name="cb" content="8318e821">
   <meta name="build" content="955acdf">
 </head>
 <body>
@@ -554,12 +554,14 @@ const pyrCfg = {
   glow  : 1.0,  // glow intensity multiplier
   hover : 3     // float height above the cube top
 };
-// Arrow marker (shared by ← and →). Flat chevron lying on the cell surface.
-const arrowCfg = { size:0.62, weight:0.34, glow:1.0, lift:5, color:'240,179,74' };   // amber
-// Crosshair reticle (flat on the cell).
-const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:6, color:'255,90,69' }; // red
-// Sightline (dotted segment between two cells).
-const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,69' };   // red laser
+// All flat / line markers sit on the TOP layer (cube-top face); lift is the
+// height above that face. The orb (P1 stance) is the exception — it's on the floor.
+// Arrow marker (shared by ← and →). Flat chevron on the cell's top face.
+const arrowCfg = { size:0.62, weight:0.34, glow:1.0, lift:1, color:'240,179,74' };   // amber
+// Crosshair reticle (flat on the top face).
+const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:1, color:'255,90,69' }; // red
+// Sightline (dotted segment between two cells) — absolute z on the top face.
+const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:28, color:'255,90,69' };   // red laser
 // Ballistic line — electric-blue dotted parabola between two cells.
 // Endpoints sit at the elevated platform centre (cube-top, z=MARK_BASE) so the
 // arc lands dead-centre on the raised square; only the mid-flight apex is higher.
@@ -611,14 +613,14 @@ function renderCube(cell, grid, active){
   const stack=document.createElement('div'); stack.className='stack';
   const isFar = grid==='far';
 
-  // SHOOTER stance → compact glowing orb (~half cell), hot core + halo
+  // SHOOTER stance → compact glowing orb (~half cell), on the FLOOR layer (z=0)
   if(active && !isFar){
     const orb=document.createElement('div'); orb.className='orb';
     const sp=(orbCfg.size*100).toFixed(1)+'%';
     orb.style.width=sp; orb.style.height=sp;
     orb.style.background=orbBgCSS();
     orb.style.boxShadow=orbShadowCSS();
-    orb.style.transform=`translate(-50%,-50%) translateZ(${(LAYERS-1)*STEP*0.55}px)`;
+    orb.style.transform=`translate(-50%,-50%) translateZ(0px)`;
     stack.appendChild(orb);
     cell.appendChild(stack);
     return;
@@ -975,7 +977,7 @@ function buildExportCanvas(){
   const TILT=58*Math.PI/180, cosT=Math.cos(TILT), sinT=Math.sin(TILT);
   const D=1100;                             // perspective distance (matches .stage)
   const CUBE_H=(LAYERS-1)*STEP;             // extruded cube height
-  const ORB_H=CUBE_H*0.55;                  // stance orb float height
+  const ORB_H=0;                            // stance orb sits on the floor layer
   const FAR_CY=-132, NEAR_CY=132;           // board-local depth of each grid's center
 
   // board-local (x,y,h) -> raw projected point (matches the CSS transform pipeline)
