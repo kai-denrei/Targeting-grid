@@ -164,6 +164,7 @@
   /* board overlay for cross-cell sightlines (shares the board's 3D transform) */
   .fxLayer{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
   .losLine{position:absolute;transform-origin:0 50%;border-radius:2px}
+  .arcDot{position:absolute;border-radius:50%}
   /* markers toolbar */
   .toolbar{display:flex;gap:6px}
   .toolbtn{flex:1;min-width:0;background:#0a1513;border:1px solid var(--line);border-radius:7px;color:var(--muted);
@@ -240,6 +241,7 @@
   .sw-pyr{background:radial-gradient(circle at 50% 35%,#ffffff,#dfe9ff 55%,#9fb4ff);box-shadow:0 0 10px rgba(255,255,255,.7);clip-path:polygon(50% 100%, 0 0, 100% 0)}
   .sw-arrow{background:rgb(240,179,74);box-shadow:0 0 8px rgba(240,179,74,.6);clip-path:polygon(0% 35%,55% 35%,55% 14%,100% 50%,55% 86%,55% 65%,0% 65%)}
   .sw-cross{background:rgb(255,90,69);box-shadow:0 0 8px rgba(255,90,69,.6);border-radius:50%}
+  .sw-arc{background:rgb(64,166,255);box-shadow:0 0 8px rgba(64,166,255,.7);border-radius:50%}
   .sw-empty{background:linear-gradient(180deg,#13201d,#0a1411)}
   .legend b{color:var(--cream)}
 
@@ -392,6 +394,7 @@
           <button class="toolbtn" data-tool="arrowR" title="Right arrow">→</button>
           <button class="toolbtn" data-tool="cross" title="Crosshair">✛</button>
           <button class="toolbtn" data-tool="los" title="Sightline (click two cells)">⋯</button>
+          <button class="toolbtn" data-tool="arc" title="Ballistic line (click two cells)">⌒</button>
         </div>
         <p class="hint" style="margin-top:10px" id="toolHint">Pick a tool, then click cells to place markers (independent of targeting).</p>
         <div id="toolCfg"></div>
@@ -418,6 +421,7 @@
           <div class="row"><span class="swatch sw-pyr"></span><span><b>pyramid</b> — hovering beacon marker</span></div>
           <div class="row"><span class="swatch sw-arrow"></span><span><b>arrows</b> — direction markers</span></div>
           <div class="row"><span class="swatch sw-cross"></span><span><b>crosshair</b> / <b>sightline</b></span></div>
+          <div class="row"><span class="swatch sw-arc"></span><span><b>ballistic</b> — arced dotted line</span></div>
           <div class="row"><span class="swatch sw-empty"></span><span>empty</span></div>
         </div>
       </div>
@@ -474,7 +478,9 @@ const state = {
   arrowR:new Set(),             // right arrows
   cross:new Set(),              // crosshairs
   los:[],                       // sightline segments {a:'grid:i', b:'grid:i'}
-  losPending:null               // first endpoint while placing a sightline
+  losPending:null,              // first endpoint while placing a sightline
+  arc:[],                       // ballistic (arced) segments {a,b}
+  arcPending:null               // first endpoint while placing a ballistic line
 };
 
 // Stance-orb ("must be here to shoot") appearance — tunable via the −/+ steppers.
@@ -513,6 +519,8 @@ const arrowCfg = { size:0.62, weight:0.34, glow:1.0, lift:5, color:'240,179,74' 
 const crossCfg = { size:0.66, gap:0.30, weight:2.4, glow:1.0, lift:6, color:'255,90,69' }; // red
 // Sightline (dotted segment between two cells).
 const losCfg   = { dash:7, gap:6, weight:2.6, glow:1.0, lift:16, color:'255,90,69' };   // red laser
+// Ballistic line — electric-blue dotted parabola between two cells.
+const arcCfg   = { height:44, gap:11, weight:3.4, glow:1.0, lift:5, color:'64,166,255' };
 const MARK_BASE = ()=> (LAYERS-1)*STEP;   // cube-top height; flat markers sit just above it
 
 /* ---------- cell construction ---------- */
@@ -596,7 +604,8 @@ const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross'};
 function onCellClick(grid,i){
   const key=grid+':'+i;
   if(state.tool){
-    if(state.tool==='los'){ losClick(key); render(); return; }
+    if(state.tool==='los'){ segClick('los','losPending',key); render(); return; }
+    if(state.tool==='arc'){ segClick('arc','arcPending',key); render(); return; }
     const set=state[TOOLSET[state.tool]];
     set.has(key)?set.delete(key):set.add(key);
     render(); return;
@@ -614,14 +623,14 @@ function onCellClick(grid,i){
   }
   render();
 }
-function losClick(key){
-  if(!state.losPending){
-    const touching=state.los.filter(s=>s.a===key||s.b===key);
-    if(touching.length){ state.los=state.los.filter(s=>!(s.a===key||s.b===key)); return; } // click endpoint -> clear its lines
-    state.losPending=key; return;                                                          // else start a new line
+function segClick(arrKey, pendKey, key){                                                    // shared two-click logic (sightline + ballistic)
+  if(!state[pendKey]){
+    const touching=state[arrKey].filter(s=>s.a===key||s.b===key);
+    if(touching.length){ state[arrKey]=state[arrKey].filter(s=>!(s.a===key||s.b===key)); return; } // click endpoint -> clear its lines
+    state[pendKey]=key; return;                                                            // else start a new line
   }
-  if(state.losPending===key){ state.losPending=null; return; }                             // same cell -> cancel
-  state.los.push({a:state.losPending,b:key}); state.losPending=null;
+  if(state[pendKey]===key){ state[pendKey]=null; return; }                                  // same cell -> cancel
+  state[arrKey].push({a:state[pendKey],b:key}); state[pendKey]=null;
 }
 
 /* ---------- translation for preview ---------- */
@@ -640,7 +649,7 @@ function render(){
   const far = dispFar||state.far, near=dispNear||state.near;
   document.querySelectorAll('#gridFar .cell').forEach(c=>renderCellFx(c,'far',far));
   document.querySelectorAll('#gridNear .cell').forEach(c=>renderCellFx(c,'near',near));
-  renderLos();
+  renderOverlay();
   if(!dispFar){ renderArrows(); renderOutputs(); renderCard(); }
 }
 function renderCellFx(cell, grid, activeSet){
@@ -651,7 +660,8 @@ function renderCellFx(cell, grid, activeSet){
   if(state.arrowL.has(key)) renderArrow(cell,'L');
   if(state.arrowR.has(key)) renderArrow(cell,'R');
   if(state.cross.has(key)) renderCross(cell);
-  if(state.losPending===key) renderLosPending(cell);
+  if(state.losPending===key) renderPending(cell, losCfg.color);
+  if(state.arcPending===key) renderPending(cell, arcCfg.color);
 }
 // flat arrow (chevron) lying on the cell surface, pointing left/right in board space
 function renderArrow(cell, dir){
@@ -681,12 +691,12 @@ function renderCross(cell){
   Object.assign(ring.style,{left:'50%',top:'50%',width:rd,height:rd,transform:'translate(-50%,-50%)',border:`${gw}px solid ${col}`,borderRadius:'50%',boxShadow:glow});
   el.appendChild(ring); cell.appendChild(el);
 }
-// pulsing marker on the cell awaiting its sightline endpoint
-function renderLosPending(cell){
+// pulsing marker on the cell awaiting its second endpoint (sightline / ballistic)
+function renderPending(cell, color){
   const el=document.createElement('div'); el.className='mk mkPending';
-  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+losCfg.lift}px)`;
-  el.style.border=`2px solid rgba(${losCfg.color},.9)`;
-  el.style.boxShadow=`0 0 10px rgba(${losCfg.color},.7)`;
+  el.style.transform=`translate(-50%,-50%) translateZ(${MARK_BASE()+8}px)`;
+  el.style.border=`2px solid rgba(${color},.9)`;
+  el.style.boxShadow=`0 0 10px rgba(${color},.7)`;
   cell.appendChild(el);
 }
 // board-local centre of a cell (px), summing the offset chain up to #board
@@ -697,14 +707,15 @@ function cellBoardCenter(grid,i){
   while(n && n!==board){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
   return {x,y};
 }
-// dotted sightline segments, drawn in a board-space overlay so they sit on the tilted plane
-function renderLos(){
+// board-space overlay: straight dotted sightlines + ballistic (arced) dotted lines
+function renderOverlay(){
   const layer=$('#fxLayer'); if(!layer) return;
   layer.innerHTML='';
+  const ends=s=>{ const [ga,ia]=s.a.split(':'), [gb,ib]=s.b.split(':'); return [cellBoardCenter(ga,+ia), cellBoardCenter(gb,+ib)]; };
+  // straight sightlines (single dashed div, rotated in-plane)
   const C=losCfg, col=`rgb(${C.color})`;
   for(const s of state.los){
-    const [ga,ia]=s.a.split(':'), [gb,ib]=s.b.split(':');
-    const A=cellBoardCenter(ga,+ia), B=cellBoardCenter(gb,+ib); if(!A||!B) continue;
+    const [A,B]=ends(s); if(!A||!B) continue;
     const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx)*180/Math.PI;
     const ln=document.createElement('div'); ln.className='losLine';
     ln.style.left=A.x+'px'; ln.style.top=A.y+'px'; ln.style.width=len+'px'; ln.style.height=C.weight+'px';
@@ -712,6 +723,20 @@ function renderLos(){
     ln.style.background=`repeating-linear-gradient(90deg, ${col} 0 ${C.dash}px, transparent ${C.dash}px ${C.dash+C.gap}px)`;
     ln.style.boxShadow=`0 0 ${(6*C.glow).toFixed(1)}px rgba(${C.color},${Math.min(1,0.75*C.glow).toFixed(2)})`;
     layer.appendChild(ln);
+  }
+  // ballistic arcs — electric-blue dots sampled along a parabola (height via translateZ)
+  const Ac=arcCfg, acol=`rgb(${Ac.color})`, glow=`0 0 ${(5*Ac.glow).toFixed(1)}px rgba(${Ac.color},${Math.min(1,0.9*Ac.glow).toFixed(2)})`;
+  for(const s of state.arc){
+    const [A,B]=ends(s); if(!A||!B) continue;
+    const chord=Math.hypot(B.x-A.x,B.y-A.y), N=Math.max(6, Math.round((chord+Ac.height)/Math.max(4,Ac.gap)));
+    for(let i=0;i<=N;i++){
+      const t=i/N, x=A.x+(B.x-A.x)*t, y=A.y+(B.y-A.y)*t, z=Ac.lift+4*Ac.height*t*(1-t);
+      const d=document.createElement('div'); d.className='arcDot';
+      d.style.left=x+'px'; d.style.top=y+'px'; d.style.width=Ac.weight+'px'; d.style.height=Ac.weight+'px';
+      d.style.transform=`translate(-50%,-50%) translateZ(${z}px)`;
+      d.style.background=acol; d.style.boxShadow=glow;
+      layer.appendChild(d);
+    }
   }
 }
 // Hovering inverted pyramid (apex down) — white & glowing. Built as a shrinking
@@ -792,7 +817,8 @@ function renderOutputs(){
       arrowsLeft: keysToCells(state.arrowL),
       arrowsRight:keysToCells(state.arrowR),
       crosshairs: keysToCells(state.cross),
-      sightlines: state.los.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)}))
+      sightlines: state.los.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)})),
+      ballistics: state.arc.map(s=>({from:keyToCell(s.a), to:keyToCell(s.b)}))
     }
   };
   $('#json').textContent=JSON.stringify(obj,null,2);
@@ -879,6 +905,13 @@ function buildExportCanvas(){
     const p1=project(A.cx,A.cy,losCfg.lift), p2=project(B.cx,B.cy,losCfg.lift);
     [p1,p2].forEach(ext); items.push({type:'los',p1,p2,z:(p1.z+p2.z)/2});
   }
+  function addArc(s){                                      // ballistic parabola sampled as projected dots
+    const A=keyCxCy(s.a), B=keyCxCy(s.b), H=arcCfg.height;
+    const chord=Math.hypot(B.cx-A.cx,B.cy-A.cy), N=Math.max(6, Math.round((chord+H)/Math.max(4,arcCfg.gap)));
+    const pts=[];
+    for(let i=0;i<=N;i++){ const t=i/N; pts.push(project(A.cx+(B.cx-A.cx)*t, A.cy+(B.cy-A.cy)*t, arcCfg.lift+4*H*t*(1-t))); }
+    pts.forEach(ext); items.push({type:'arc',pts,z:Math.max(...pts.map(p=>p.z))});
+  }
   for(let i=0;i<9;i++){
     const r=(i/3|0), c=i%3;
     far.has(i)  ? addCube(cellCX(c), FAR_CY +(r-1)*SP,'far') : addCube(cellCX(c), FAR_CY +(r-1)*SP,'empty');
@@ -889,6 +922,7 @@ function buildExportCanvas(){
   for(const key of state.arrowR){ const {cx,cy}=keyCxCy(key); addArrow(cx,cy,'R'); }
   for(const key of state.cross){ const {cx,cy}=keyCxCy(key); addCross(cx,cy); }
   for(const s of state.los){ addLos(s); }
+  for(const s of state.arc){ addArc(s); }
 
   // canvas sizing (transparent, high-res) -----------------------------------
   const M=70, scale=1300/Math.max(1,(maxX-minX));
@@ -992,6 +1026,13 @@ function buildExportCanvas(){
       g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
       g.setLineDash([]);
       g.restore();
+    } else if(it.type==='arc'){             // electric-blue ballistic dots
+      const C=arcCfg, rad=Math.max(1.2, C.weight*scale*0.5);
+      g.save();
+      g.shadowColor=`rgba(${C.color},${Math.min(1,0.9*C.glow).toFixed(2)})`; g.shadowBlur=5*C.glow*scale*0.4;
+      g.fillStyle=`rgb(${C.color})`;
+      for(const p of it.pts){ const q=PX(p); g.beginPath(); g.arc(q.x,q.y,rad,0,Math.PI*2); g.fill(); }
+      g.restore();
     }
   }
 
@@ -1091,7 +1132,7 @@ $('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
 /* ---------- markers palette ---------- */
-function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null; }
+function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null; }
 const CFGS={
   pyramid:{obj:pyrCfg, steps:{
     width :{s:2,  min:8,   max:60, label:'Width', fmt:v=>v+'px'},
@@ -1116,6 +1157,12 @@ const CFGS={
     gap   :{s:1,  min:2, max:30, label:'Gap',   fmt:v=>v+'px'},
     weight:{s:0.4,min:1, max:8,  label:'Weight',fmt:v=>v.toFixed(1)},
     glow  :{s:0.1,min:0, max:2.5,label:'Glow',  fmt:v=>v.toFixed(1)}
+  }},
+  arc:{obj:arcCfg, steps:{
+    height:{s:4,  min:0, max:120,label:'Arc height',fmt:v=>v+'px'},
+    gap   :{s:1,  min:4, max:30, label:'Dot gap',   fmt:v=>v+'px'},
+    weight:{s:0.4,min:1, max:8,  label:'Dot size',  fmt:v=>v.toFixed(1)},
+    glow  :{s:0.1,min:0, max:2.5,label:'Glow',      fmt:v=>v.toFixed(1)}
   }}
 };
 const TOOL_HINTS={
@@ -1123,7 +1170,8 @@ const TOOL_HINTS={
   arrowL :'Click cells to place <b>left arrows</b> (click again to remove).',
   arrowR :'Click cells to place <b>right arrows</b> (click again to remove).',
   cross  :'Click cells to place <b>crosshairs</b> (click again to remove).',
-  los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Click a used cell to clear its lines.'
+  los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Click a used cell to clear its lines.',
+  arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Click a used cell to clear its arcs.'
 };
 const cfgKeyForTool=t=>(t==='arrowL'||t==='arrowR')?'arrow':t;
 function buildCfgUI(){
@@ -1146,7 +1194,7 @@ function buildCfgUI(){
   }
 }
 function setTool(t){
-  state.tool=(state.tool===t)?null:t; state.losPending=null;
+  state.tool=(state.tool===t)?null:t; state.losPending=null; state.arcPending=null;
   document.querySelectorAll('#toolbar .toolbtn').forEach(b=>b.classList.toggle('on', b.dataset.tool===state.tool));
   document.querySelector('.stagewrap').classList.toggle('placing', !!state.tool);
   const want=state.tool?cfgKeyForTool(state.tool):null;
