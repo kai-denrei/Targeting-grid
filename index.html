@@ -173,6 +173,15 @@
   .toolbtn.on{color:#cdd6ff;border-color:#cdd6ff;background:rgba(205,214,255,.12);box-shadow:inset 0 0 14px rgba(205,214,255,.18)}
   .cfgblock{margin-top:12px}
   .cfgblock[hidden]{display:none}   /* beat .orbsteps{display:flex} so hidden actually hides */
+  /* sightline / ballistic instance manager */
+  #instList{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  #instList[hidden]{display:none}
+  .instrow{display:flex;align-items:center;gap:6px}
+  .ilbl{flex:1;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--cream);letter-spacing:.04em}
+  .ilbl.editing{color:var(--amber)}
+  .ibtn{width:26px;height:26px;display:grid;place-items:center;background:#0a1513;border:1px solid var(--line);border-radius:6px;color:var(--muted);font-family:inherit;font-size:13px;line-height:1;cursor:pointer;transition:.16s}
+  .ibtn:hover{color:var(--teal);border-color:var(--teal-dim)}
+  .ibtn.idel:hover{color:var(--red);border-color:var(--red-dim)}
   /* hit target lives on the TOP face of the cube (raised + tilted with the board),
      so clicks land on the visible upper layer rather than the flat base footprint */
   .hitpad{
@@ -398,6 +407,7 @@
         </div>
         <p class="hint" style="margin-top:10px" id="toolHint">Pick a tool, then click cells to place markers (independent of targeting).</p>
         <div id="toolCfg"></div>
+        <div id="instList" hidden></div>
         <div class="btnrow" style="margin-top:10px">
           <button class="btn warn" id="clearMarks">Clear all markers</button>
         </div>
@@ -480,7 +490,8 @@ const state = {
   los:[],                       // sightline segments {a:'grid:i', b:'grid:i'}
   losPending:null,              // first endpoint while placing a sightline
   arc:[],                       // ballistic (arced) segments {a,b}
-  arcPending:null               // first endpoint while placing a ballistic line
+  arcPending:null,              // first endpoint while placing a ballistic line
+  segEdit:null                  // {tool,idx} when re-picking an existing segment's endpoints
 };
 
 // Stance-orb ("must be here to shoot") appearance — tunable via the −/+ steppers.
@@ -604,8 +615,7 @@ const TOOLSET={pyramid:'pyr',arrowL:'arrowL',arrowR:'arrowR',cross:'cross'};
 function onCellClick(grid,i){
   const key=grid+':'+i;
   if(state.tool){
-    if(state.tool==='los'){ segClick('los','losPending',key); render(); return; }
-    if(state.tool==='arc'){ segClick('arc','arcPending',key); render(); return; }
+    if(state.tool==='los'||state.tool==='arc'){ segPlace(state.tool,key); render(); return; }
     const set=state[TOOLSET[state.tool]];
     set.has(key)?set.delete(key):set.add(key);
     render(); return;
@@ -623,14 +633,16 @@ function onCellClick(grid,i){
   }
   render();
 }
-function segClick(arrKey, pendKey, key){                                                    // shared two-click logic (sightline + ballistic)
-  if(!state[pendKey]){
-    const touching=state[arrKey].filter(s=>s.a===key||s.b===key);
-    if(touching.length){ state[arrKey]=state[arrKey].filter(s=>!(s.a===key||s.b===key)); return; } // click endpoint -> clear its lines
-    state[pendKey]=key; return;                                                            // else start a new line
-  }
-  if(state[pendKey]===key){ state[pendKey]=null; return; }                                  // same cell -> cancel
-  state[arrKey].push({a:state[pendKey],b:key}); state[pendKey]=null;
+// shared two-click placement (sightline + ballistic). Adds a new segment, or
+// replaces an existing one's endpoints when editing via the instance list.
+function segPlace(tool, key){
+  const pendKey = tool==='los'?'losPending':'arcPending';
+  const arr     = tool==='los'?state.los:state.arc;
+  if(!state[pendKey]){ state[pendKey]=key; return; }                 // first endpoint
+  if(state[pendKey]===key){ state[pendKey]=null; return; }           // same cell -> cancel
+  const seg={a:state[pendKey], b:key}; state[pendKey]=null;
+  if(state.segEdit && state.segEdit.tool===tool){ arr[state.segEdit.idx]=seg; state.segEdit=null; } // replace
+  else arr.push(seg);                                                // add new instance
 }
 
 /* ---------- translation for preview ---------- */
@@ -650,6 +662,7 @@ function render(){
   document.querySelectorAll('#gridFar .cell').forEach(c=>renderCellFx(c,'far',far));
   document.querySelectorAll('#gridNear .cell').forEach(c=>renderCellFx(c,'near',near));
   renderOverlay();
+  renderInstances();
   if(!dispFar){ renderArrows(); renderOutputs(); renderCard(); }
 }
 function renderCellFx(cell, grid, activeSet){
@@ -706,6 +719,39 @@ function cellBoardCenter(grid,i){
   const board=$('#board'); let x=cell.offsetWidth/2, y=cell.offsetHeight/2, n=cell;
   while(n && n!==board){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
   return {x,y};
+}
+// per-instance manager for sightlines / ballistic arcs (+ add, edit, delete)
+function fmtKey(k){ const [g,i]=k.split(':'); return (g==='far'?'F':'N')+i; }
+function renderInstances(){
+  const host=$('#instList'); if(!host) return;
+  const tool=state.tool;
+  if(tool!=='los' && tool!=='arc'){ host.hidden=true; host.innerHTML=''; return; }
+  host.hidden=false; host.innerHTML='';
+  const arr  = tool==='los'?state.los:state.arc;
+  const pend = tool==='los'?state.losPending:state.arcPending;
+  const label= tool==='los'?'sightline':'ballistic';
+  const add=document.createElement('button'); add.className='btn'; add.style.width='100%'; add.textContent='+ Add '+label;
+  add.addEventListener('click',()=>{ state.segEdit=null; state.losPending=null; state.arcPending=null; render(); });
+  host.appendChild(add);
+  if((state.segEdit&&state.segEdit.tool===tool)||pend){
+    const st=document.createElement('p'); st.className='hint'; st.style.marginTop='6px';
+    const which = pend?'the <b>end</b>':'a <b>start</b>';
+    st.innerHTML = state.segEdit&&state.segEdit.tool===tool
+      ? `Editing <b>#${state.segEdit.idx+1}</b> — click ${which} cell.`
+      : `Click ${which} cell…`;
+    host.appendChild(st);
+  }
+  arr.forEach((s,idx)=>{
+    const row=document.createElement('div'); row.className='instrow';
+    const editing = state.segEdit&&state.segEdit.tool===tool&&state.segEdit.idx===idx;
+    const lbl=document.createElement('span'); lbl.className='ilbl'+(editing?' editing':'');
+    lbl.textContent=`#${idx+1}  ${fmtKey(s.a)} → ${fmtKey(s.b)}`;
+    const ed=document.createElement('button'); ed.className='ibtn'; ed.textContent='✎'; ed.title='Re-pick cells';
+    ed.addEventListener('click',()=>{ state.segEdit={tool,idx}; state.losPending=null; state.arcPending=null; render(); });
+    const del=document.createElement('button'); del.className='ibtn idel'; del.textContent='×'; del.title='Delete';
+    del.addEventListener('click',()=>{ arr.splice(idx,1); if(state.segEdit&&state.segEdit.tool===tool) state.segEdit=null; render(); });
+    row.append(lbl,ed,del); host.appendChild(row);
+  });
 }
 // board-space overlay: straight dotted sightlines + ballistic (arced) dotted lines
 function renderOverlay(){
@@ -1132,7 +1178,7 @@ $('#pngSerial').addEventListener('input',updatePngPreview);
 $('#clearFar').addEventListener('click',()=>{state.far.clear();render();});
 $('#clearNear').addEventListener('click',()=>{state.near.clear();render();});
 /* ---------- markers palette ---------- */
-function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null; }
+function clearMarkers(){ state.pyr.clear();state.arrowL.clear();state.arrowR.clear();state.cross.clear();state.los=[];state.losPending=null;state.arc=[];state.arcPending=null;state.segEdit=null; }
 const CFGS={
   pyramid:{obj:pyrCfg, steps:{
     width :{s:2,  min:8,   max:60, label:'Width', fmt:v=>v+'px'},
@@ -1170,8 +1216,8 @@ const TOOL_HINTS={
   arrowL :'Click cells to place <b>left arrows</b> (click again to remove).',
   arrowR :'Click cells to place <b>right arrows</b> (click again to remove).',
   cross  :'Click cells to place <b>crosshairs</b> (click again to remove).',
-  los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Click a used cell to clear its lines.',
-  arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Click a used cell to clear its arcs.'
+  los    :'Click a <b>start</b> cell, then an <b>end</b> cell to draw a sightline. Add / edit / delete instances in the list below.',
+  arc    :'Click a <b>start</b> cell, then an <b>end</b> cell to lob a <b>ballistic</b> line. Add / edit / delete instances in the list below.'
 };
 const cfgKeyForTool=t=>(t==='arrowL'||t==='arrowR')?'arrow':t;
 function buildCfgUI(){
@@ -1194,7 +1240,7 @@ function buildCfgUI(){
   }
 }
 function setTool(t){
-  state.tool=(state.tool===t)?null:t; state.losPending=null; state.arcPending=null;
+  state.tool=(state.tool===t)?null:t; state.losPending=null; state.arcPending=null; state.segEdit=null;
   document.querySelectorAll('#toolbar .toolbtn').forEach(b=>b.classList.toggle('on', b.dataset.tool===state.tool));
   document.querySelector('.stagewrap').classList.toggle('placing', !!state.tool);
   const want=state.tool?cfgKeyForTool(state.tool):null;
